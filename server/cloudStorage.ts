@@ -1,4 +1,5 @@
-import { objectStorageClient } from "./replit_integrations/object_storage";
+import * as fs from "fs/promises";
+import * as path from "path";
 
 function slugify(text: string): string {
   return text
@@ -10,26 +11,18 @@ function slugify(text: string): string {
     .slice(0, 50);
 }
 
-function getBucketName(): string {
-  const bucketId = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID;
-  if (!bucketId) {
-    throw new Error("DEFAULT_OBJECT_STORAGE_BUCKET_ID not set. Set up object storage first.");
-  }
-  return bucketId;
+// Use local file storage for Railway deployment
+// Files are stored in the 'data' directory
+function getDataDir(): string {
+  return process.env.DATA_DIR || path.join(process.cwd(), "data");
 }
 
-function getPrivateDir(): string {
-  const dir = process.env.PRIVATE_OBJECT_DIR;
-  if (!dir) {
-    throw new Error("PRIVATE_OBJECT_DIR not set. Set up object storage first.");
+async function ensureDir(dirPath: string): Promise<void> {
+  try {
+    await fs.mkdir(dirPath, { recursive: true });
+  } catch (error) {
+    // Ignore if directory already exists
   }
-  // Extract just the path portion after the bucket name
-  // Format: /<bucket-name>/<path>
-  const parts = dir.split("/").filter(p => p);
-  if (parts.length >= 2) {
-    return parts.slice(1).join("/");
-  }
-  return ".private";
 }
 
 export class CloudStorageService {
@@ -40,8 +33,7 @@ export class CloudStorageService {
 
   static getSessionPath(clientName: string, sessionId: number): string {
     const folderName = this.getSessionFolderName(clientName, sessionId);
-    const privateDir = getPrivateDir();
-    return `${privateDir}/briefings/${folderName}`;
+    return path.join(getDataDir(), "briefings", folderName);
   }
 
   static async saveAudio(
@@ -52,19 +44,13 @@ export class CloudStorageService {
     format: string = "webm"
   ): Promise<string> {
     const sessionPath = this.getSessionPath(clientName, sessionId);
-    const objectPath = `${sessionPath}/audio/question-${questionId}.${format}`;
-    
-    const bucketName = getBucketName();
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectPath);
-    
-    await file.save(audioBuffer, {
-      contentType: format === "webm" ? "audio/webm" : "audio/wav",
-      resumable: false,
-    });
-    
-    // Return the full object path for storage in database
-    return `/${bucketName}/${objectPath}`;
+    const audioDir = path.join(sessionPath, "audio");
+    await ensureDir(audioDir);
+
+    const filePath = path.join(audioDir, `question-${questionId}.${format}`);
+    await fs.writeFile(filePath, audioBuffer);
+
+    return filePath;
   }
 
   static async saveTranscript(
@@ -75,22 +61,17 @@ export class CloudStorageService {
     questionTitle?: string
   ): Promise<string> {
     const sessionPath = this.getSessionPath(clientName, sessionId);
-    const objectPath = `${sessionPath}/transcripts/question-${questionId}.txt`;
-    
-    const content = questionTitle 
+    const transcriptDir = path.join(sessionPath, "transcripts");
+    await ensureDir(transcriptDir);
+
+    const content = questionTitle
       ? `Question: ${questionTitle}\n\nResponse:\n${transcription}`
       : transcription;
-    
-    const bucketName = getBucketName();
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectPath);
-    
-    await file.save(content, {
-      contentType: "text/plain; charset=utf-8",
-      resumable: false,
-    });
-    
-    return `/${bucketName}/${objectPath}`;
+
+    const filePath = path.join(transcriptDir, `question-${questionId}.txt`);
+    await fs.writeFile(filePath, content, "utf-8");
+
+    return filePath;
   }
 
   static async saveReport(
@@ -99,18 +80,13 @@ export class CloudStorageService {
     reportData: object
   ): Promise<{ jsonPath: string }> {
     const sessionPath = this.getSessionPath(clientName, sessionId);
-    const objectPath = `${sessionPath}/reports/summary.json`;
-    
-    const bucketName = getBucketName();
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectPath);
-    
-    await file.save(JSON.stringify(reportData, null, 2), {
-      contentType: "application/json",
-      resumable: false,
-    });
-    
-    return { jsonPath: `/${bucketName}/${objectPath}` };
+    const reportsDir = path.join(sessionPath, "reports");
+    await ensureDir(reportsDir);
+
+    const filePath = path.join(reportsDir, "summary.json");
+    await fs.writeFile(filePath, JSON.stringify(reportData, null, 2), "utf-8");
+
+    return { jsonPath: filePath };
   }
 
   static async savePdf(
@@ -119,45 +95,21 @@ export class CloudStorageService {
     pdfBuffer: Buffer
   ): Promise<string> {
     const sessionPath = this.getSessionPath(clientName, sessionId);
-    const objectPath = `${sessionPath}/reports/report.pdf`;
-    
-    const bucketName = getBucketName();
-    const bucket = objectStorageClient.bucket(bucketName);
-    const file = bucket.file(objectPath);
-    
-    await file.save(pdfBuffer, {
-      contentType: "application/pdf",
-      resumable: false,
-    });
-    
-    return `/${bucketName}/${objectPath}`;
+    const reportsDir = path.join(sessionPath, "reports");
+    await ensureDir(reportsDir);
+
+    const filePath = path.join(reportsDir, "report.pdf");
+    await fs.writeFile(filePath, pdfBuffer);
+
+    return filePath;
   }
 
-  static async readFile(objectPath: string): Promise<Buffer | null> {
+  static async readFile(filePath: string): Promise<Buffer | null> {
     try {
-      // Parse the object path: /<bucket-name>/<object-path>
-      const pathWithoutLeadingSlash = objectPath.startsWith("/") ? objectPath.slice(1) : objectPath;
-      const parts = pathWithoutLeadingSlash.split("/");
-      if (parts.length < 2) {
-        console.error("Invalid object path:", objectPath);
-        return null;
-      }
-      
-      const bucketName = parts[0];
-      const filePath = parts.slice(1).join("/");
-      
-      const bucket = objectStorageClient.bucket(bucketName);
-      const file = bucket.file(filePath);
-      
-      const [exists] = await file.exists();
-      if (!exists) {
-        return null;
-      }
-      
-      const [contents] = await file.download();
-      return contents;
+      const buffer = await fs.readFile(filePath);
+      return buffer;
     } catch (error) {
-      console.error("Error reading file from cloud storage:", error);
+      console.error("Error reading file:", error);
       return null;
     }
   }
@@ -168,25 +120,39 @@ export class CloudStorageService {
     questionId: number
   ): Promise<string | null> {
     const sessionPath = this.getSessionPath(clientName, sessionId);
-    const objectPath = `${sessionPath}/transcripts/question-${questionId}.txt`;
-    
-    const bucketName = getBucketName();
-    const fullPath = `/${bucketName}/${objectPath}`;
-    
-    const buffer = await this.readFile(fullPath);
-    if (!buffer) return null;
-    
-    return buffer.toString("utf-8");
+    const filePath = path.join(sessionPath, "transcripts", `question-${questionId}.txt`);
+
+    try {
+      const content = await fs.readFile(filePath, "utf-8");
+      return content;
+    } catch (error) {
+      return null;
+    }
   }
 
   static async listSessionFiles(clientName: string, sessionId: number): Promise<string[]> {
     try {
       const sessionPath = this.getSessionPath(clientName, sessionId);
-      const bucketName = getBucketName();
-      const bucket = objectStorageClient.bucket(bucketName);
-      
-      const [files] = await bucket.getFiles({ prefix: sessionPath });
-      return files.map(f => `/${bucketName}/${f.name}`);
+      const files: string[] = [];
+
+      const walkDir = async (dir: string): Promise<void> => {
+        try {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              await walkDir(fullPath);
+            } else {
+              files.push(fullPath);
+            }
+          }
+        } catch (error) {
+          // Directory doesn't exist yet
+        }
+      };
+
+      await walkDir(sessionPath);
+      return files;
     } catch (error) {
       console.error("Error listing session files:", error);
       return [];

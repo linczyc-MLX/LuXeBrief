@@ -19,8 +19,8 @@ function adminAuth(req: Request, res: ExpressResponse, next: NextFunction) {
 }
 
 const openai = new OpenAI({
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  apiKey: process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
 });
 
 export async function registerRoutes(
@@ -348,12 +348,10 @@ ${responseContext}`
         return res.status(400).json({ error: "Invalid file type" });
       }
       
-      const filePath = `${fileType}/${fileName}`;
-      
-      // Construct the full object path
+      // Construct the full file path using local storage
       const sessionPath = CloudStorageService.getSessionPath(session.clientName, sessionId);
-      const fullPath = `/${process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID}/${sessionPath}/${filePath}`;
-      
+      const fullPath = `${sessionPath}/${fileType}/${fileName}`;
+
       const fileBuffer = await CloudStorageService.readFile(fullPath);
       if (!fileBuffer) {
         return res.status(404).json({ error: "File not found" });
