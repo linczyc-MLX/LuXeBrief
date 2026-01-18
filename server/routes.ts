@@ -364,12 +364,13 @@ ${responseContext}`
       }
       
       // Set content type based on file extension
+      const fileNameStr = Array.isArray(fileName) ? fileName[0] : fileName;
       let contentType = "application/octet-stream";
-      if (filePath.endsWith(".webm")) contentType = "audio/webm";
-      else if (filePath.endsWith(".wav")) contentType = "audio/wav";
-      else if (filePath.endsWith(".txt")) contentType = "text/plain; charset=utf-8";
-      else if (filePath.endsWith(".json")) contentType = "application/json";
-      else if (filePath.endsWith(".pdf")) contentType = "application/pdf";
+      if (fileNameStr.endsWith(".webm")) contentType = "audio/webm";
+      else if (fileNameStr.endsWith(".wav")) contentType = "audio/wav";
+      else if (fileNameStr.endsWith(".txt")) contentType = "text/plain; charset=utf-8";
+      else if (fileNameStr.endsWith(".json")) contentType = "application/json";
+      else if (fileNameStr.endsWith(".pdf")) contentType = "application/pdf";
       
       res.setHeader("Content-Type", contentType);
       res.send(fileBuffer);
