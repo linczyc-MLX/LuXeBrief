@@ -84,7 +84,8 @@ export default {
       },
       fontFamily: {
         sans: ["Inter", "var(--font-sans)", "system-ui", "sans-serif"],
-        serif: ["Crimson Pro", "Georgia", "var(--font-serif)", "serif"],
+        serif: ["Playfair Display", "Georgia", "var(--font-serif)", "serif"],
+        heading: ["Playfair Display", "Georgia", "serif"],
         mono: ["var(--font-mono)"],
       },
       keyframes: {

@@ -160,7 +160,7 @@ export default function ReportPage() {
           </div>
         </div>
 
-        {/* Executive Summary */}
+        {/* Executive Summary - All Categories */}
         <Card className="mb-8">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -168,79 +168,63 @@ export default function ReportPage() {
               Executive Summary
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-base leading-relaxed whitespace-pre-wrap" data-testid="text-summary">
-              {report.summary}
-            </p>
+          <CardContent className="space-y-6">
+            {/* Vision Summary */}
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                <Sparkles className="w-4 h-4" />
+                Vision & Aspirations
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-summary">
+                {report.summary || "No vision summary available."}
+              </p>
+            </div>
+
+            {/* Design Preferences */}
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                <Palette className="w-4 h-4" />
+                Design Preferences
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-design-preferences">
+                {report.designPreferences || "No design preferences recorded."}
+              </p>
+            </div>
+
+            {/* Functional Requirements */}
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                <Layout className="w-4 h-4" />
+                Functional Requirements
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-functional-needs">
+                {report.functionalNeeds || "No functional requirements recorded."}
+              </p>
+            </div>
+
+            {/* Lifestyle Elements */}
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                <Heart className="w-4 h-4" />
+                Lifestyle Elements
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-lifestyle-elements">
+                {report.lifestyleElements || "No lifestyle elements recorded."}
+              </p>
+            </div>
+
+            {/* Additional Notes */}
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                <MessageSquare className="w-4 h-4" />
+                Additional Notes
+              </h3>
+              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-additional-notes">
+                {report.additionalNotes || "No additional notes recorded."}
+              </p>
+            </div>
           </CardContent>
         </Card>
-
-        {/* Categorized Insights */}
-        <div className="grid gap-6 md:grid-cols-2 mb-8">
-          {report.designPreferences && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Palette className="w-5 h-5 text-primary" />
-                  Design Preferences
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-design-preferences">
-                  {report.designPreferences}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {report.functionalNeeds && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Layout className="w-5 h-5 text-primary" />
-                  Functional Requirements
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-functional-needs">
-                  {report.functionalNeeds}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {report.lifestyleElements && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Heart className="w-5 h-5 text-primary" />
-                  Lifestyle Elements
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-lifestyle-elements">
-                  {report.lifestyleElements}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-
-          {report.additionalNotes && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-primary" />
-                  Additional Notes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-additional-notes">
-                  {report.additionalNotes}
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
 
         <Separator className="my-8" />
 
