@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { storage } from "./storage";
+import { getStorage } from "./storage";
 
 const app = express();
 const httpServer = createServer(app);
@@ -62,8 +62,14 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  // Initialize MySQL storage (seed defaults if needed)
-  await storage.initialize();
+  // Initialize storage (MySQL if available, otherwise MemStorage)
+  try {
+    await getStorage();
+    console.log("Storage initialized successfully");
+  } catch (error) {
+    console.error("Storage initialization error:", error);
+    // Continue anyway - the proxy will handle it
+  }
 
   await registerRoutes(httpServer, app);
 
