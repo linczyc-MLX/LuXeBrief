@@ -59,14 +59,15 @@ export async function registerRoutes(
   // Create new session
   app.post("/api/sessions", async (req: Request, res: ExpressResponse) => {
     try {
-      const { clientName } = req.body;
+      const { clientName, projectName } = req.body;
       if (!clientName || typeof clientName !== "string") {
         return res.status(400).json({ error: "Client name is required" });
       }
-      
+
       // Create session first to get the ID
-      const session = await storage.createSession({ 
+      const session = await storage.createSession({
         clientName,
+        projectName: projectName || null,
         status: "in_progress",
         currentQuestionIndex: 0
       });
@@ -631,110 +632,35 @@ ${responseContext}`
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
-      
+
       const responses = await storage.getResponsesBySession(id);
       const report = await storage.getReport(id);
-      
+
       if (!report) {
         return res.status(404).json({ error: "Report not found" });
       }
-      
-      // Generate PDF
-      const doc = new PDFDocument({ margin: 50 });
-      const chunks: Buffer[] = [];
-      
-      doc.on("data", (chunk) => chunks.push(chunk));
-      
-      const pdfPromise = new Promise<Buffer>((resolve) => {
-        doc.on("end", () => resolve(Buffer.concat(chunks)));
-      });
-      
-      // Title
-      doc.fontSize(24).font("Helvetica-Bold").text("Design Brief", { align: "center" });
-      doc.moveDown(0.5);
-      doc.fontSize(16).font("Helvetica").text(`${session.clientName}`, { align: "center" });
-      doc.fontSize(10).text(`Generated: ${new Date().toLocaleDateString()}`, { align: "center" });
-      doc.moveDown(2);
-      
-      // Executive Summary
-      doc.fontSize(14).font("Helvetica-Bold").text("Executive Summary");
-      doc.moveDown(0.5);
-      doc.fontSize(11).font("Helvetica").text(report.summary);
-      doc.moveDown(1.5);
-      
-      // Design Preferences
-      if (report.designPreferences) {
-        doc.fontSize(14).font("Helvetica-Bold").text("Design Preferences");
-        doc.moveDown(0.5);
-        doc.fontSize(11).font("Helvetica").text(report.designPreferences);
-        doc.moveDown(1.5);
-      }
-      
-      // Functional Requirements
-      if (report.functionalNeeds) {
-        doc.fontSize(14).font("Helvetica-Bold").text("Functional Requirements");
-        doc.moveDown(0.5);
-        doc.fontSize(11).font("Helvetica").text(report.functionalNeeds);
-        doc.moveDown(1.5);
-      }
-      
-      // Lifestyle Elements
-      if (report.lifestyleElements) {
-        doc.fontSize(14).font("Helvetica-Bold").text("Lifestyle Elements");
-        doc.moveDown(0.5);
-        doc.fontSize(11).font("Helvetica").text(report.lifestyleElements);
-        doc.moveDown(1.5);
-      }
-      
-      // Additional Notes
-      if (report.additionalNotes) {
-        doc.fontSize(14).font("Helvetica-Bold").text("Additional Notes");
-        doc.moveDown(0.5);
-        doc.fontSize(11).font("Helvetica").text(report.additionalNotes);
-        doc.moveDown(1.5);
-      }
-      
-      // Add new page for full responses
-      doc.addPage();
-      doc.fontSize(16).font("Helvetica-Bold").text("Complete Responses", { align: "center" });
-      doc.moveDown(1);
-      
+
       // Fetch all questions from storage
       const allQuestions = await storage.getActiveQuestions();
-      
-      // Group by category
-      const categories = ["vision", "design", "functional", "lifestyle", "emotional"] as const;
-      
-      for (const category of categories) {
-        const categoryQuestions = allQuestions.filter((q: Question) => q.category === category);
-        if (categoryQuestions.length === 0) continue;
-        
-        doc.fontSize(12).font("Helvetica-Bold").text(categoryLabels[category as keyof typeof categoryLabels]);
-        doc.moveDown(0.5);
-        
-        for (const question of categoryQuestions) {
-          const response = responses.find(r => r.questionId === question.id);
-          
-          doc.fontSize(10).font("Helvetica-Bold").text(question.question);
-          doc.fontSize(10).font("Helvetica").text(
-            response?.transcription || "No response recorded",
-            { indent: 20 }
-          );
-          doc.moveDown(0.5);
-        }
-        
-        doc.moveDown(1);
-      }
-      
-      doc.end();
-      
-      const pdfBuffer = await pdfPromise;
-      
+
+      // Use the N4S-styled PDF generator
+      const sections = {
+        summary: report.summary,
+        designPreferences: report.designPreferences || "",
+        functionalNeeds: report.functionalNeeds || "",
+        lifestyleElements: report.lifestyleElements || "",
+        additionalNotes: report.additionalNotes || "",
+      };
+
+      const pdfBuffer = await generatePdfBuffer(session, responses, sections, allQuestions);
+
+      // Create filename with client name and optional project
+      const clientSlug = session.clientName.replace(/[^a-zA-Z0-9]/g, "_");
+      const projectSlug = session.projectName ? `-${session.projectName.replace(/[^a-zA-Z0-9]/g, "_")}` : "";
+      const filename = `LuXeBrief-${clientSlug}${projectSlug}.pdf`;
+
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader(
-        "Content-Disposition",
-        `attachment; filename="${session.clientName.replace(/[^a-zA-Z0-9]/g, "_")}-design-brief.pdf"`
-      );
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.send(pdfBuffer);
     } catch (error) {
       console.error("Error generating PDF:", error);
@@ -745,96 +671,206 @@ ${responseContext}`
   return httpServer;
 }
 
-// Helper to generate PDF buffer
+// N4S Brand Colors
+const N4S_NAVY = "#1e3a5f";
+const N4S_GOLD = "#c9a227";
+const N4S_TEXT = "#1a1a1a";
+const N4S_MUTED = "#6b6b6b";
+
+// Helper to generate PDF buffer with N4S Brand styling
 async function generatePdfBuffer(
   session: Session,
   responses: DBResponse[],
   sections: { summary: string; designPreferences: string; functionalNeeds: string; lifestyleElements: string; additionalNotes: string },
   allQuestions: Question[]
 ): Promise<Buffer> {
-  const doc = new PDFDocument({ margin: 50 });
+  // Track pages for "Page X of Y" footer
+  const pages: Buffer[][] = [];
+  let currentPageChunks: Buffer[] = [];
+
+  const doc = new PDFDocument({
+    margin: 50,
+    size: 'A4',
+    bufferPages: true  // Enable buffering to add page numbers later
+  });
   const chunks: Buffer[] = [];
-  
+
   doc.on("data", (chunk) => chunks.push(chunk));
-  
+
   const pdfPromise = new Promise<Buffer>((resolve) => {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
   });
-  
-  // Title
-  doc.fontSize(24).font("Helvetica-Bold").text("Design Brief", { align: "center" });
+
+  const pageWidth = doc.page.width;
+  const pageHeight = doc.page.height;
+  const margin = 50;
+  const contentWidth = pageWidth - (margin * 2);
+  const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const projectDisplay = session.projectName || "Luxury Residence Project";
+
+  // Helper function to add header and footer to each page
+  const addPageHeaderFooter = () => {
+    const pageCount = doc.bufferedPageRange().count;
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i);
+
+      // Footer: © 2026 N4S Luxury Residential Advisory | Page X of Y
+      doc.fontSize(8)
+         .fillColor(N4S_MUTED)
+         .text(
+           `© 2026 N4S Luxury Residential Advisory`,
+           margin,
+           pageHeight - 30,
+           { continued: true, width: contentWidth / 2 }
+         )
+         .text(
+           `Page ${i + 1} of ${pageCount}`,
+           margin + contentWidth / 2,
+           pageHeight - 30,
+           { align: 'right', width: contentWidth / 2 }
+         );
+    }
+  };
+
+  // ========== PAGE 1: Title Page ==========
+
+  // Navy header bar
+  doc.rect(0, 0, pageWidth, 60).fill(N4S_NAVY);
+
+  // N4S Logo text
+  doc.fontSize(14).fillColor('#ffffff').text("N4S", margin, 22);
+  doc.fontSize(9).fillColor('#ffffff').text("Luxury Residential Advisory", margin, 38);
+
+  // Report type and date on right
+  doc.fontSize(10).fillColor('#ffffff').text("LuXeBrief Lifestyle Brief", pageWidth - margin - 150, 22, { width: 150, align: 'right' });
+  doc.fontSize(9).fillColor('#ffffff').text(generatedDate, pageWidth - margin - 150, 38, { width: 150, align: 'right' });
+
+  doc.moveDown(5);
+
+  // Project and Client info
+  doc.y = 100;
+  doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica-Bold").text("Project: ", margin, doc.y, { continued: true });
+  doc.font("Helvetica").text(projectDisplay);
+  doc.moveDown(0.3);
+  doc.font("Helvetica-Bold").text("Client: ", { continued: true });
+  doc.font("Helvetica").text(session.clientName);
+
+  doc.moveDown(3);
+
+  // Main Title
+  doc.fontSize(24).fillColor(N4S_NAVY).font("Helvetica-Bold").text("LuXeBrief Lifestyle Brief", { align: "center" });
   doc.moveDown(0.5);
-  doc.fontSize(16).font("Helvetica").text(`${session.clientName}`, { align: "center" });
-  doc.fontSize(10).text(`Generated: ${new Date().toLocaleDateString()}`, { align: "center" });
-  doc.moveDown(2);
-  
+  doc.fontSize(12).fillColor(N4S_MUTED).font("Helvetica").text("A comprehensive summary of your vision for ultra-luxury living", { align: "center" });
+
+  doc.moveDown(3);
+
   // Executive Summary
-  doc.fontSize(14).font("Helvetica-Bold").text("Executive Summary");
+  doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Executive Summary");
   doc.moveDown(0.5);
-  doc.fontSize(11).font("Helvetica").text(sections.summary || "No summary available.");
+  doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
+  doc.moveDown(0.8);
+  doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(sections.summary || "No summary available.", { lineGap: 4 });
   doc.moveDown(1.5);
-  
+
   // Design Preferences
   if (sections.designPreferences) {
-    doc.fontSize(14).font("Helvetica-Bold").text("Design Preferences");
+    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Design Preferences");
     doc.moveDown(0.5);
-    doc.fontSize(11).font("Helvetica").text(sections.designPreferences);
+    doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
+    doc.moveDown(0.8);
+    doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(sections.designPreferences, { lineGap: 4 });
     doc.moveDown(1.5);
   }
-  
+
   // Functional Requirements
   if (sections.functionalNeeds) {
-    doc.fontSize(14).font("Helvetica-Bold").text("Functional Requirements");
+    // Check if we need a new page
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Functional Requirements");
     doc.moveDown(0.5);
-    doc.fontSize(11).font("Helvetica").text(sections.functionalNeeds);
+    doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
+    doc.moveDown(0.8);
+    doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(sections.functionalNeeds, { lineGap: 4 });
     doc.moveDown(1.5);
   }
-  
+
   // Lifestyle Elements
   if (sections.lifestyleElements) {
-    doc.fontSize(14).font("Helvetica-Bold").text("Lifestyle Elements");
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Lifestyle Elements");
     doc.moveDown(0.5);
-    doc.fontSize(11).font("Helvetica").text(sections.lifestyleElements);
+    doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
+    doc.moveDown(0.8);
+    doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(sections.lifestyleElements, { lineGap: 4 });
     doc.moveDown(1.5);
   }
-  
+
   // Additional Notes
   if (sections.additionalNotes) {
-    doc.fontSize(14).font("Helvetica-Bold").text("Additional Notes");
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Additional Notes");
     doc.moveDown(0.5);
-    doc.fontSize(11).font("Helvetica").text(sections.additionalNotes);
+    doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
+    doc.moveDown(0.8);
+    doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(sections.additionalNotes, { lineGap: 4 });
     doc.moveDown(1.5);
   }
-  
-  // Add new page for full responses
+
+  // ========== RESPONSES PAGE ==========
   doc.addPage();
-  doc.fontSize(16).font("Helvetica-Bold").text("Complete Responses", { align: "center" });
-  doc.moveDown(1);
-  
+
+  // Navy header bar on new page
+  doc.rect(0, 0, pageWidth, 40).fill(N4S_NAVY);
+  doc.fontSize(12).fillColor('#ffffff').text("Complete Responses", margin, 14);
+
+  doc.y = 60;
+
   // Group by category
   const categories = ["vision", "design", "functional", "lifestyle", "emotional"] as const;
-  
+
   for (const category of categories) {
     const categoryQuestions = allQuestions.filter((q: Question) => q.category === category);
     if (categoryQuestions.length === 0) continue;
-    
-    doc.fontSize(12).font("Helvetica-Bold").text(categoryLabels[category as keyof typeof categoryLabels]);
+
+    // Check if we need a new page
+    if (doc.y > pageHeight - 150) {
+      doc.addPage();
+      doc.rect(0, 0, pageWidth, 40).fill(N4S_NAVY);
+      doc.fontSize(12).fillColor('#ffffff').text("Complete Responses (continued)", margin, 14);
+      doc.y = 60;
+    }
+
+    doc.fontSize(12).fillColor(N4S_NAVY).font("Helvetica-Bold").text(categoryLabels[category as keyof typeof categoryLabels]);
     doc.moveDown(0.5);
-    
+
     for (const question of categoryQuestions) {
       const response = responses.find(r => r.questionId === question.id);
       if (!response?.transcription) continue;
-      
-      doc.fontSize(10).font("Helvetica-Bold").text(question.question);
+
+      // Check if we need a new page
+      if (doc.y > pageHeight - 100) {
+        doc.addPage();
+        doc.rect(0, 0, pageWidth, 40).fill(N4S_NAVY);
+        doc.fontSize(12).fillColor('#ffffff').text("Complete Responses (continued)", margin, 14);
+        doc.y = 60;
+      }
+
+      doc.fontSize(10).fillColor(N4S_TEXT).font("Helvetica-Bold").text(question.question);
       doc.moveDown(0.3);
-      doc.fontSize(10).font("Helvetica").text(response.transcription, { indent: 20 });
+      doc.fontSize(10).fillColor(N4S_MUTED).font("Helvetica").text(response.transcription, { indent: 15, lineGap: 3 });
       doc.moveDown(1);
     }
     doc.moveDown(0.5);
   }
-  
+
+  // Add headers and footers to all pages
+  addPageHeaderFooter();
+
   doc.end();
-  
+
   return pdfPromise;
 }
 

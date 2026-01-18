@@ -138,11 +138,26 @@ export default function ReportPage() {
             <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
           <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-3">
-            Your Design Brief
+            LuXeBrief Lifestyle Brief
           </h1>
           <p className="text-lg text-muted-foreground max-w-lg mx-auto">
             A comprehensive summary of your vision for your ultra-luxury residence.
           </p>
+          {/* Client & Project Info */}
+          <div className="mt-6 p-4 bg-muted/30 rounded-lg inline-block">
+            <div className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">Client:</span> {session.clientName}
+              {session.projectName && (
+                <>
+                  <span className="mx-2">•</span>
+                  <span className="font-medium text-foreground">Project:</span> {session.projectName}
+                </>
+              )}
+            </div>
+            <div className="text-xs text-muted-foreground mt-1">
+              Generated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+            </div>
+          </div>
         </div>
 
         {/* Executive Summary */}

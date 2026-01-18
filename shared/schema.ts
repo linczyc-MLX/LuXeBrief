@@ -22,6 +22,7 @@ export type User = typeof users.$inferSelect;
 export const sessions = mysqlTable("sessions", {
   id: int("id").primaryKey().autoincrement(),
   clientName: varchar("client_name", { length: 255 }).notNull(),
+  projectName: varchar("project_name", { length: 255 }), // Optional project name for reports
   accessToken: varchar("access_token", { length: 255 }), // Random token for secure file access
   folderPath: varchar("folder_path", { length: 500 }), // Path to client data folder
   status: varchar("status", { length: 50 }).notNull().default("in_progress"), // in_progress, completed

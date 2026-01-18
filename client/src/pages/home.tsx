@@ -12,6 +12,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function HomePage() {
   const [clientName, setClientName] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [, setLocation] = useLocation();
 
   const { data: content = {} } = useQuery<Record<string, string>>({
@@ -21,8 +22,8 @@ export default function HomePage() {
   const c = (key: string, fallback: string) => content[key] || fallback;
 
   const createSession = useMutation({
-    mutationFn: async (name: string) => {
-      const res = await apiRequest("POST", "/api/sessions", { clientName: name });
+    mutationFn: async (data: { clientName: string; projectName?: string }) => {
+      const res = await apiRequest("POST", "/api/sessions", data);
       return res.json();
     },
     onSuccess: (data) => {
@@ -33,7 +34,10 @@ export default function HomePage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (clientName.trim()) {
-      createSession.mutate(clientName.trim());
+      createSession.mutate({
+        clientName: clientName.trim(),
+        projectName: projectName.trim() || undefined
+      });
     }
   };
 
@@ -75,20 +79,34 @@ export default function HomePage() {
               <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="space-y-3">
                   <Label htmlFor="clientName" className="text-base font-medium">
-                    Your Name
+                    Client Name
                   </Label>
                   <Input
                     id="clientName"
                     data-testid="input-client-name"
-                    placeholder="Enter your name to begin"
+                    placeholder="First and Last Name"
                     value={clientName}
                     onChange={(e) => setClientName(e.target.value)}
                     className="h-12 text-base px-4"
                     autoComplete="name"
                     autoFocus
                   />
+                </div>
+
+                <div className="space-y-3">
+                  <Label htmlFor="projectName" className="text-base font-medium">
+                    Project Name <span className="text-muted-foreground font-normal">(optional)</span>
+                  </Label>
+                  <Input
+                    id="projectName"
+                    data-testid="input-project-name"
+                    placeholder="e.g. Thornwood Estate"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    className="h-12 text-base px-4"
+                  />
                   <p className="text-sm text-muted-foreground">
-                    This helps us personalize your briefing experience.
+                    Used for report identification.
                   </p>
                 </div>
 
