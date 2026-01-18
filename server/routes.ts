@@ -749,23 +749,23 @@ async function generatePdfBuffer(
 
   // Project and Client info
   doc.y = 100;
-  doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica-Bold").text("Project: ", margin, doc.y, { continued: true });
+  doc.fontSize(11).fillColor(N4S_TEXT).font('Helvetica-Bold').text("Project: ", margin, doc.y, { continued: true });
   doc.font("Helvetica").text(projectDisplay);
   doc.moveDown(0.3);
-  doc.font("Helvetica-Bold").text("Client: ", { continued: true });
+  doc.font('Helvetica-Bold').text("Client: ", { continued: true });
   doc.font("Helvetica").text(session.clientName);
 
   doc.moveDown(3);
 
   // Main Title
-  doc.fontSize(24).fillColor(N4S_NAVY).font("Helvetica-Bold").text("LuXeBrief Lifestyle Brief", { align: "center" });
+  doc.fontSize(24).fillColor(N4S_NAVY).font('Helvetica-Bold').text("LuXeBrief Lifestyle Brief", { align: "center" });
   doc.moveDown(0.5);
   doc.fontSize(12).fillColor(N4S_MUTED).font("Helvetica").text("A comprehensive summary of your vision for ultra-luxury living", { align: "center" });
 
   doc.moveDown(3);
 
   // Executive Summary
-  doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Executive Summary");
+  doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Executive Summary");
   doc.moveDown(0.5);
   doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
   doc.moveDown(0.8);
@@ -774,7 +774,7 @@ async function generatePdfBuffer(
 
   // Design Preferences
   if (sections.designPreferences) {
-    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Design Preferences");
+    doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Design Preferences");
     doc.moveDown(0.5);
     doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
     doc.moveDown(0.8);
@@ -787,7 +787,7 @@ async function generatePdfBuffer(
     // Check if we need a new page
     if (doc.y > pageHeight - 200) doc.addPage();
 
-    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Functional Requirements");
+    doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Functional Requirements");
     doc.moveDown(0.5);
     doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
     doc.moveDown(0.8);
@@ -799,7 +799,7 @@ async function generatePdfBuffer(
   if (sections.lifestyleElements) {
     if (doc.y > pageHeight - 200) doc.addPage();
 
-    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Lifestyle Elements");
+    doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Lifestyle Elements");
     doc.moveDown(0.5);
     doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
     doc.moveDown(0.8);
@@ -811,7 +811,7 @@ async function generatePdfBuffer(
   if (sections.additionalNotes) {
     if (doc.y > pageHeight - 200) doc.addPage();
 
-    doc.fontSize(14).fillColor(N4S_NAVY).font("Helvetica-Bold").text("Additional Notes");
+    doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Additional Notes");
     doc.moveDown(0.5);
     doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
     doc.moveDown(0.8);
@@ -843,7 +843,7 @@ async function generatePdfBuffer(
       doc.y = 60;
     }
 
-    doc.fontSize(12).fillColor(N4S_NAVY).font("Helvetica-Bold").text(categoryLabels[category as keyof typeof categoryLabels]);
+    doc.fontSize(12).fillColor(N4S_NAVY).font('Helvetica-Bold').text(categoryLabels[category as keyof typeof categoryLabels]);
     doc.moveDown(0.5);
 
     for (const question of categoryQuestions) {
@@ -858,7 +858,7 @@ async function generatePdfBuffer(
         doc.y = 60;
       }
 
-      doc.fontSize(10).fillColor(N4S_TEXT).font("Helvetica-Bold").text(question.question);
+      doc.fontSize(10).fillColor(N4S_TEXT).font('Helvetica-Bold').text(question.question);
       doc.moveDown(0.3);
       doc.fontSize(10).fillColor(N4S_MUTED).font("Helvetica").text(response.transcription, { indent: 15, lineGap: 3 });
       doc.moveDown(1);

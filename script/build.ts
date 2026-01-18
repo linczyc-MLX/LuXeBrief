@@ -24,7 +24,7 @@ const allowlist = [
   "openai",
   "passport",
   "passport-local",
-  "pdfkit",
+  // "pdfkit", // EXCLUDED: pdfkit needs its data files (AFM fonts) from node_modules
   "stripe",
   "uuid",
   "ws",
