@@ -55,7 +55,7 @@ export default function ReportPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${session?.clientName || "briefing"}-design-brief.pdf`;
+      a.download = `LuXeBrief-${session?.projectName || session?.clientName || "briefing"}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -116,8 +116,8 @@ export default function ReportPage() {
               <Home className="w-5 h-5" />
             </Button>
             <div>
-              <p className="font-medium text-sm">{session.clientName}</p>
-              <p className="text-xs text-muted-foreground">Design Brief Complete</p>
+              <p className="font-medium text-sm">{session.projectName || "LuXeBrief Project"}</p>
+              <p className="text-xs text-muted-foreground">Lifestyle Brief</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -138,7 +138,7 @@ export default function ReportPage() {
             <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
           <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-3">
-            LuXeBrief Lifestyle Brief
+            LuXeBrief Lifestyle
           </h1>
           <p className="text-lg text-muted-foreground max-w-lg mx-auto">
             A comprehensive summary of your vision for your ultra-luxury residence.
