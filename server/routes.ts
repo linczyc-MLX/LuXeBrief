@@ -4,8 +4,13 @@ import { storage } from "./storage";
 import { categoryLabels, type Question, type Session, type Response as DBResponse, insertQuestionSchema } from "@shared/schema";
 import OpenAI, { toFile } from "openai";
 import PDFDocument from "pdfkit";
-import { Buffer } from "node:buffer";
+import { Buffer, File } from "node:buffer";
 import { CloudStorageService } from "./cloudStorage";
+
+// Polyfill File for Node.js < 20 (required by OpenAI SDK for file uploads)
+if (typeof globalThis.File === "undefined") {
+  globalThis.File = File as unknown as typeof globalThis.File;
+}
 
 // Simple admin token authentication middleware
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "luxury-admin-2024";
