@@ -29,6 +29,12 @@ export const sessions = mysqlTable("sessions", {
   currentQuestionIndex: int("current_question_index").notNull().default(0),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   completedAt: timestamp("completed_at"),
+  // N4S Integration fields
+  n4sProjectId: varchar("n4s_project_id", { length: 100 }), // Link to N4S project
+  n4sPrincipalType: varchar("n4s_principal_type", { length: 20 }), // 'principal' or 'secondary'
+  clientEmail: varchar("client_email", { length: 255 }), // Client email for notifications
+  subdomain: varchar("subdomain", { length: 100 }), // e.g., 'pthornwood' for pthornwood.luxebrief.not-4.sale
+  invitationSentAt: timestamp("invitation_sent_at"), // When invitation email was sent
 });
 
 export const insertSessionSchema = createInsertSchema(sessions).omit({

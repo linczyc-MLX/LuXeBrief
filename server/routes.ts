@@ -1,11 +1,17 @@
 import type { Express, Request, Response as ExpressResponse, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { randomUUID } from "crypto";
 import { storage } from "./storage";
 import { categoryLabels, type Question, type Session, type Response as DBResponse, insertQuestionSchema } from "@shared/schema";
 import OpenAI, { toFile } from "openai";
 import PDFDocument from "pdfkit";
 import { Buffer, File } from "node:buffer";
 import { CloudStorageService } from "./cloudStorage";
+
+// Generate secure access token for session URLs
+function generateAccessToken(): string {
+  return randomUUID();
+}
 
 // Polyfill File for Node.js < 20 (required by OpenAI SDK for file uploads)
 if (typeof globalThis.File === "undefined") {
@@ -82,6 +88,79 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error creating session:", error);
       res.status(500).json({ error: "Failed to create session" });
+    }
+  });
+
+  // Create session from N4S (with admin auth)
+  // Called by N4S KYC module when "Send LuXeBrief" button is clicked
+  app.post("/api/sessions/from-n4s", adminAuth, async (req: Request, res: ExpressResponse) => {
+    try {
+      const {
+        n4sProjectId,
+        principalType,
+        clientName,
+        clientEmail,
+        projectName,
+        subdomain
+      } = req.body;
+
+      // Validate required fields
+      if (!clientName || typeof clientName !== "string") {
+        return res.status(400).json({ error: "clientName is required" });
+      }
+      if (!clientEmail || typeof clientEmail !== "string") {
+        return res.status(400).json({ error: "clientEmail is required" });
+      }
+      if (!principalType || !["principal", "secondary"].includes(principalType)) {
+        return res.status(400).json({ error: "principalType must be 'principal' or 'secondary'" });
+      }
+
+      // Generate access token for secure session access
+      const accessToken = generateAccessToken();
+
+      // Create session with N4S integration fields
+      const session = await storage.createSession({
+        clientName,
+        projectName: projectName || null,
+        status: "in_progress",
+        currentQuestionIndex: 0,
+        accessToken,
+        n4sProjectId: n4sProjectId || null,
+        n4sPrincipalType: principalType,
+        clientEmail,
+        subdomain: subdomain || null,
+        invitationSentAt: new Date(),
+      });
+
+      // Get the cloud storage path for this session
+      const folderPath = CloudStorageService.getSessionPath(clientName, session.id);
+
+      // Update session with folder path
+      const updatedSession = await storage.updateSession(session.id, { folderPath });
+
+      // Build the invitation URL
+      const baseUrl = subdomain
+        ? `https://${subdomain}.luxebrief.not-4.sale`
+        : `https://luxebrief.not-4.sale`;
+      const invitationUrl = `${baseUrl}/briefing/${session.id}?token=${accessToken}`;
+
+      // TODO: Send email invitation via SMTP
+      // For now, just return the URL for manual sending or frontend display
+
+      console.log(`[N4S] Created session ${session.id} for ${clientName} (${principalType})`);
+      console.log(`[N4S] Invitation URL: ${invitationUrl}`);
+
+      res.status(201).json({
+        sessionId: session.id,
+        accessToken,
+        invitationUrl,
+        subdomain: subdomain || null,
+        status: "created",
+        message: `Session created for ${clientName}. Invitation URL ready.`
+      });
+    } catch (error) {
+      console.error("Error creating N4S session:", error);
+      res.status(500).json({ error: "Failed to create session from N4S" });
     }
   });
 

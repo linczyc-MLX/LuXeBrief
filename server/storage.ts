@@ -154,7 +154,8 @@ export class MySQLStorage implements IStorage {
 
   async createSession(insertSession: InsertSession): Promise<Session> {
     const db = await this.getDb();
-    const accessToken = randomUUID();
+    // Use provided accessToken or generate a new one
+    const accessToken = insertSession.accessToken || randomUUID();
     const result = await db.insert(sessions).values({
       clientName: insertSession.clientName,
       projectName: insertSession.projectName ?? null,
@@ -162,6 +163,12 @@ export class MySQLStorage implements IStorage {
       folderPath: insertSession.folderPath ?? null,
       status: insertSession.status || "in_progress",
       currentQuestionIndex: insertSession.currentQuestionIndex ?? 0,
+      // N4S integration fields
+      n4sProjectId: insertSession.n4sProjectId ?? null,
+      n4sPrincipalType: insertSession.n4sPrincipalType ?? null,
+      clientEmail: insertSession.clientEmail ?? null,
+      subdomain: insertSession.subdomain ?? null,
+      invitationSentAt: insertSession.invitationSentAt ?? null,
     });
 
     const insertId = result[0].insertId;
