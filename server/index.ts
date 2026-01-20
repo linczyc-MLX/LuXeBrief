@@ -4,9 +4,35 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { getStorage } from "./storage";
 import { verifySmtpConnection } from "./email";
+import cors from "cors";
 
 const app = express();
 const httpServer = createServer(app);
+
+// CORS configuration for N4S integration
+const allowedOrigins = [
+  "https://website.not-4.sale",
+  "https://home-5019406629.app-ionos.space",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    // Allow any subdomain of luxebrief.not-4.sale
+    if (origin.endsWith(".luxebrief.not-4.sale") || origin.endsWith(".not-4.sale")) {
+      return callback(null, true);
+    }
+    console.warn(`[CORS] Blocked origin: ${origin}`);
+    return callback(null, false);
+  },
+  credentials: true,
+}));
 
 declare module "http" {
   interface IncomingMessage {
