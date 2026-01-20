@@ -7,6 +7,7 @@ import OpenAI, { toFile } from "openai";
 import PDFDocument from "pdfkit";
 import { Buffer, File } from "node:buffer";
 import { CloudStorageService } from "./cloudStorage";
+import { sendLuXeBriefInvitation, verifySmtpConnection } from "./email";
 
 // Generate secure access token for session URLs
 function generateAccessToken(): string {
@@ -144,11 +145,22 @@ export async function registerRoutes(
         : `https://luxebrief.not-4.sale`;
       const invitationUrl = `${baseUrl}/briefing/${session.id}?token=${accessToken}`;
 
-      // TODO: Send email invitation via SMTP
-      // For now, just return the URL for manual sending or frontend display
-
       console.log(`[N4S] Created session ${session.id} for ${clientName} (${principalType})`);
       console.log(`[N4S] Invitation URL: ${invitationUrl}`);
+
+      // Send email invitation
+      let emailSent = false;
+      try {
+        emailSent = await sendLuXeBriefInvitation({
+          clientName,
+          clientEmail,
+          projectName: projectName || "Luxury Residence Project",
+          invitationUrl,
+          principalType: principalType as "principal" | "secondary",
+        });
+      } catch (emailError) {
+        console.error("[N4S] Email sending failed:", emailError);
+      }
 
       res.status(201).json({
         sessionId: session.id,
@@ -156,7 +168,10 @@ export async function registerRoutes(
         invitationUrl,
         subdomain: subdomain || null,
         status: "created",
-        message: `Session created for ${clientName}. Invitation URL ready.`
+        emailSent,
+        message: emailSent
+          ? `Session created and invitation sent to ${clientEmail}.`
+          : `Session created for ${clientName}. Email could not be sent - use the invitation URL manually.`
       });
     } catch (error) {
       console.error("Error creating N4S session:", error);

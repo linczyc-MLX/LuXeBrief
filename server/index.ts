@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { getStorage } from "./storage";
+import { verifySmtpConnection } from "./email";
 
 const app = express();
 const httpServer = createServer(app);
@@ -70,6 +71,9 @@ app.use((req, res, next) => {
     console.error("Storage initialization error:", error);
     // Continue anyway - the proxy will handle it
   }
+
+  // Verify SMTP connection for email sending
+  await verifySmtpConnection();
 
   await registerRoutes(httpServer, app);
 
