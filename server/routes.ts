@@ -318,19 +318,31 @@ export async function registerRoutes(
           messages: [
             {
               role: "system",
-              content: `You are an expert luxury residence design consultant. Analyze the client briefing responses and create a comprehensive design brief summary. Be professional, insightful, and highlight key themes and preferences.`
+              content: `You are an expert luxury residence design consultant writing a professional design brief. Write in flowing, professional prose paragraphs. NEVER use bullet points, numbered lists, or markdown formatting like **bold** or *italic*. Write as if this will be printed in a luxury design document.`
             },
             {
               role: "user",
-              content: `Please analyze these client briefing responses for an ultra-luxury private residence and provide:
+              content: `Analyze these client briefing responses for an ultra-luxury private residence and write in flowing prose paragraphs (NO bullet points, NO numbered lists, NO markdown).
 
-1. An executive summary (2-3 paragraphs) capturing the client's overall vision
-2. Key design preferences extracted from their responses
-3. Functional requirements and practical needs
-4. Lifestyle elements and entertainment preferences
-5. Any additional notes or recommendations
+Write these sections with clear headings:
+
+EXECUTIVE SUMMARY
+Write 2-3 substantial paragraphs capturing the client's overall vision, aspirations, and what they want to feel in their new home.
+
+DESIGN PREFERENCES
+Write 1-2 paragraphs about their aesthetic preferences, materials, colors, and architectural style.
+
+FUNCTIONAL REQUIREMENTS
+Write 1-2 paragraphs about practical needs: space flow, security, technology, and how the home should function.
+
+LIFESTYLE ELEMENTS
+Write 1-2 paragraphs about daily routines, entertaining style, and how they envision living in the space.
+
+ADDITIONAL NOTES
+Write 1 paragraph with other observations or recommendations.
 
 Client: ${session.clientName}
+Project: ${session.projectName || "Luxury Residence"}
 
 Responses:
 ${responseContext}`
@@ -978,59 +990,80 @@ function parseSummarySections(fullText: string) {
     lifestyleElements: "",
     additionalNotes: "",
   };
-  
-  // Try to extract sections based on common patterns
-  const lines = fullText.split("\n");
+
+  // Remove markdown bold/italic formatting that bleeds into PDF
+  const cleanText = fullText.replace(/\*\*/g, '').replace(/\*/g, '').replace(/#/g, '');
+
+  // Try to extract sections based on headings
+  const lines = cleanText.split("\n");
   let currentSection = "summary";
   let currentContent: string[] = [];
-  
+
+  // Section header patterns - check if a line is a section header
+  const sectionPatterns: Record<string, RegExp[]> = {
+    summary: [/^executive\s+summary/i, /^summary/i, /^overview/i],
+    designPreferences: [/^design\s+preference/i, /^aesthetic/i, /^style/i],
+    functionalNeeds: [/^functional\s+requirement/i, /^functional/i, /^practical/i],
+    lifestyleElements: [/^lifestyle\s+element/i, /^lifestyle/i, /^entertainment/i, /^daily/i],
+    additionalNotes: [/^additional\s+note/i, /^additional/i, /^recommendation/i, /^other/i],
+  };
+
   for (const line of lines) {
-    const lowerLine = line.toLowerCase().trim();
-    
-    if (lowerLine.includes("executive summary") || lowerLine.includes("overall vision")) {
-      if (currentContent.length) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+
+    // Check if this line is a section header
+    let isHeader = false;
+    let newSection = currentSection;
+
+    for (const [section, patterns] of Object.entries(sectionPatterns)) {
+      if (patterns.some(pattern => pattern.test(trimmedLine))) {
+        // Only treat as header if the line is short (likely a heading, not content)
+        if (trimmedLine.length < 60) {
+          isHeader = true;
+          newSection = section;
+          break;
+        }
+      }
+    }
+
+    if (isHeader && newSection !== currentSection) {
+      // Save current section content before switching
+      if (currentContent.length > 0) {
         sections[currentSection as keyof typeof sections] = currentContent.join("\n").trim();
       }
-      currentSection = "summary";
+      currentSection = newSection;
       currentContent = [];
-    } else if (lowerLine.includes("design preference") || lowerLine.includes("aesthetic")) {
-      if (currentContent.length) {
-        sections[currentSection as keyof typeof sections] = currentContent.join("\n").trim();
-      }
-      currentSection = "designPreferences";
-      currentContent = [];
-    } else if (lowerLine.includes("functional") || lowerLine.includes("requirement") || lowerLine.includes("practical")) {
-      if (currentContent.length) {
-        sections[currentSection as keyof typeof sections] = currentContent.join("\n").trim();
-      }
-      currentSection = "functionalNeeds";
-      currentContent = [];
-    } else if (lowerLine.includes("lifestyle") || lowerLine.includes("entertainment")) {
-      if (currentContent.length) {
-        sections[currentSection as keyof typeof sections] = currentContent.join("\n").trim();
-      }
-      currentSection = "lifestyleElements";
-      currentContent = [];
-    } else if (lowerLine.includes("additional") || lowerLine.includes("recommendation") || lowerLine.includes("note")) {
-      if (currentContent.length) {
-        sections[currentSection as keyof typeof sections] = currentContent.join("\n").trim();
-      }
-      currentSection = "additionalNotes";
-      currentContent = [];
-    } else if (line.trim()) {
-      currentContent.push(line);
+    } else if (!isHeader) {
+      // Add content line (not a header)
+      currentContent.push(trimmedLine);
     }
   }
-  
+
   // Save the last section
-  if (currentContent.length) {
+  if (currentContent.length > 0) {
     sections[currentSection as keyof typeof sections] = currentContent.join("\n").trim();
   }
-  
-  // If parsing didn't work well, just use the full text as summary
-  if (!sections.summary && !sections.designPreferences) {
-    sections.summary = fullText;
+
+  // CRITICAL FALLBACK: If summary is empty but we have content, use it
+  if (!sections.summary && cleanText.trim()) {
+    // If other sections have content, try to extract first paragraphs
+    const allText = cleanText.trim();
+    const paragraphs = allText.split(/\n\n+/).filter(p => p.trim());
+
+    if (paragraphs.length > 0) {
+      // Use first 2-3 paragraphs as summary
+      sections.summary = paragraphs.slice(0, 3).join("\n\n");
+    } else {
+      // Use everything
+      sections.summary = allText;
+    }
   }
-  
+
+  // Absolute final fallback - never show "No summary available" if AI returned content
+  if (!sections.summary) {
+    sections.summary = cleanText.trim() || "Summary generation in progress.";
+  }
+
   return sections;
 }
