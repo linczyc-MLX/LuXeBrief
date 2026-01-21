@@ -31,6 +31,7 @@ export interface IStorage {
 
   // Sessions
   getSession(id: number): Promise<Session | undefined>;
+  getSessionsByEmail(email: string): Promise<Session[]>;
   createSession(session: InsertSession): Promise<Session>;
   updateSession(id: number, updates: Partial<Session>): Promise<Session | undefined>;
 
@@ -150,6 +151,13 @@ export class MySQLStorage implements IStorage {
     const db = await this.getDb();
     const result = await db.select().from(sessions).where(eq(sessions.id, id)).limit(1);
     return result[0];
+  }
+
+  async getSessionsByEmail(email: string): Promise<Session[]> {
+    const db = await this.getDb();
+    const result = await db.select().from(sessions).where(eq(sessions.clientEmail, email));
+    // Sort by ID descending to get most recent first
+    return result.sort((a: Session, b: Session) => b.id - a.id);
   }
 
   async createSession(insertSession: InsertSession): Promise<Session> {
@@ -445,6 +453,14 @@ export class MemStorage implements IStorage {
     return this.sessions.get(id);
   }
 
+  async getSessionsByEmail(email: string): Promise<Session[]> {
+    const allSessions = Array.from(this.sessions.values());
+    // Filter by email and sort by ID descending (most recent first)
+    return allSessions
+      .filter(s => (s as any).clientEmail === email)
+      .sort((a, b) => b.id - a.id);
+  }
+
   async createSession(insertSession: InsertSession): Promise<Session> {
     const id = this.nextSessionId++;
     const session: Session = {
@@ -668,6 +684,7 @@ class StorageProxy implements IStorage {
   getUserByUsername(username: string) { return getStorage().then(s => s.getUserByUsername(username)); }
   createUser(user: InsertUser) { return getStorage().then(s => s.createUser(user)); }
   getSession(id: number) { return getStorage().then(s => s.getSession(id)); }
+  getSessionsByEmail(email: string) { return getStorage().then(s => s.getSessionsByEmail(email)); }
   createSession(session: InsertSession) { return getStorage().then(s => s.createSession(session)); }
   updateSession(id: number, updates: Partial<Session>) { return getStorage().then(s => s.updateSession(id, updates)); }
   getResponsesBySession(sessionId: number) { return getStorage().then(s => s.getResponsesBySession(sessionId)); }

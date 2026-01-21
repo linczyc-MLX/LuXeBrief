@@ -187,12 +187,51 @@ export async function registerRoutes(
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
-      
+
       const responses = await storage.getResponsesBySession(id);
       res.json({ ...session, responses });
     } catch (error) {
       console.error("Error fetching session:", error);
       res.status(500).json({ error: "Failed to fetch session" });
+    }
+  });
+
+  // Get sessions by email (for N4S status lookup when session ID mismatch)
+  // Returns the most recent completed session first, or most recent overall if none completed
+  app.get("/api/sessions/by-email/:email", async (req: Request, res: ExpressResponse) => {
+    try {
+      const email = decodeURIComponent(req.params.email as string);
+      if (!email || !email.includes('@')) {
+        return res.status(400).json({ error: "Valid email is required" });
+      }
+
+      const allSessions = await storage.getSessionsByEmail(email);
+
+      if (allSessions.length === 0) {
+        return res.status(404).json({ error: "No sessions found for this email" });
+      }
+
+      // Find the most recent completed session, or fall back to most recent overall
+      const completedSession = allSessions.find(s => s.status === 'completed');
+      const bestSession = completedSession || allSessions[0];
+
+      // Return the best session with basic info
+      res.json({
+        sessionId: bestSession.id,
+        status: bestSession.status,
+        clientName: bestSession.clientName,
+        completedAt: bestSession.completedAt,
+        createdAt: bestSession.createdAt,
+        allSessions: allSessions.map(s => ({
+          sessionId: s.id,
+          status: s.status,
+          createdAt: s.createdAt,
+          completedAt: s.completedAt
+        }))
+      });
+    } catch (error) {
+      console.error("Error fetching sessions by email:", error);
+      res.status(500).json({ error: "Failed to fetch sessions" });
     }
   });
 
