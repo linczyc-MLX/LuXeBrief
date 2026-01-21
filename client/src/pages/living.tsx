@@ -902,7 +902,8 @@ export default function LivingPage() {
 
   const completeSession = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/sessions/${id}/complete`);
+      // Use /complete-living for Living sessions (form-based), not /complete (audio-based)
+      const res = await apiRequest("POST", `/api/sessions/${id}/complete-living`);
       return res.json();
     },
     onSuccess: () => {

@@ -194,8 +194,10 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Session not found" });
       }
 
+      // Include both Lifestyle responses (audio) and Living responses (form-based)
       const responses = await storage.getResponsesBySession(id);
-      res.json({ ...session, responses });
+      const livingResponses = await storage.getLivingResponsesBySession(id);
+      res.json({ ...session, responses, livingResponses });
     } catch (error) {
       console.error("Error fetching session:", error);
       res.status(500).json({ error: "Failed to fetch session" });
