@@ -213,19 +213,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Valid email is required" });
       }
 
-      // Support optional sessionType filter (e.g., ?sessionType=living)
-      const sessionTypeFilter = req.query.sessionType as string | undefined;
-
-      let allSessions = await storage.getSessionsByEmail(email);
-
-      // Filter by sessionType if provided
-      if (sessionTypeFilter && ['living', 'lifestyle'].includes(sessionTypeFilter)) {
-        allSessions = allSessions.filter(s => s.sessionType === sessionTypeFilter);
-      }
+      const allSessions = await storage.getSessionsByEmail(email);
 
       if (allSessions.length === 0) {
-        const filterMsg = sessionTypeFilter ? ` of type '${sessionTypeFilter}'` : '';
-        return res.status(404).json({ error: `No sessions${filterMsg} found for this email` });
+        return res.status(404).json({ error: "No sessions found for this email" });
       }
 
       // Find the most recent completed session, or fall back to most recent overall
@@ -236,14 +227,12 @@ export async function registerRoutes(
       res.json({
         sessionId: bestSession.id,
         status: bestSession.status,
-        sessionType: bestSession.sessionType,
         clientName: bestSession.clientName,
         completedAt: bestSession.completedAt,
         createdAt: bestSession.createdAt,
         allSessions: allSessions.map(s => ({
           sessionId: s.id,
           status: s.status,
-          sessionType: s.sessionType,
           createdAt: s.createdAt,
           completedAt: s.completedAt
         }))
