@@ -2,7 +2,7 @@ import type { Express, Request, Response as ExpressResponse, NextFunction } from
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage } from "./storage";
-import { categoryLabels, type Question, type Session, type Response as DBResponse, insertQuestionSchema } from "@shared/schema";
+import { categoryLabels, type Question, type Session, type Response as DBResponse, type LivingResponse, insertQuestionSchema, livingSteps } from "@shared/schema";
 import OpenAI, { toFile } from "openai";
 import PDFDocument from "pdfkit";
 import { Buffer, File } from "node:buffer";
@@ -102,7 +102,8 @@ export async function registerRoutes(
         clientName,
         clientEmail,
         projectName,
-        subdomain
+        subdomain,
+        sessionType // 'lifestyle' (default, audio-based) or 'living' (form-based)
       } = req.body;
 
       // Validate required fields
@@ -119,10 +120,14 @@ export async function registerRoutes(
       // Generate access token for secure session access
       const accessToken = generateAccessToken();
 
+      // Validate sessionType if provided
+      const validSessionType = sessionType === 'living' ? 'living' : 'lifestyle';
+
       // Create session with N4S integration fields
       const session = await storage.createSession({
         clientName,
         projectName: projectName || null,
+        sessionType: validSessionType,
         status: "in_progress",
         currentQuestionIndex: 0,
         accessToken,
@@ -139,13 +144,14 @@ export async function registerRoutes(
       // Update session with folder path
       const updatedSession = await storage.updateSession(session.id, { folderPath });
 
-      // Build the invitation URL
+      // Build the invitation URL - use /living/ for living sessions, /briefing/ for lifestyle
       const baseUrl = subdomain
         ? `https://${subdomain}.luxebrief.not-4.sale`
         : `https://luxebrief.not-4.sale`;
-      const invitationUrl = `${baseUrl}/briefing/${session.id}?token=${accessToken}`;
+      const sessionRoute = validSessionType === 'living' ? 'living' : 'briefing';
+      const invitationUrl = `${baseUrl}/${sessionRoute}/${session.id}?token=${accessToken}`;
 
-      console.log(`[N4S] Created session ${session.id} for ${clientName} (${principalType})`);
+      console.log(`[N4S] Created ${validSessionType} session ${session.id} for ${clientName} (${principalType})`);
       console.log(`[N4S] Invitation URL: ${invitationUrl}`);
 
       // Send email invitation
@@ -317,11 +323,106 @@ export async function registerRoutes(
       }
       
       const response = await storage.createOrUpdateResponse(sessionId, questionId, updateData);
-      
+
       res.status(201).json(response);
     } catch (error) {
       console.error("Error saving response:", error);
       res.status(500).json({ error: "Failed to save response" });
+    }
+  });
+
+  // Save Living questionnaire step response
+  app.post("/api/sessions/:id/living-response", async (req: Request, res: ExpressResponse) => {
+    try {
+      const sessionId = parseInt(req.params.id as string);
+      const { stepId, data, isCompleted } = req.body;
+
+      // Validate required fields
+      if (!stepId || typeof stepId !== "string") {
+        return res.status(400).json({ error: "stepId is required" });
+      }
+      if (!data || typeof data !== "string") {
+        return res.status(400).json({ error: "data must be a JSON string" });
+      }
+
+      // Get session to verify it exists
+      const session = await storage.getSession(sessionId);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Save or update the living response
+      const livingResponse = await storage.createOrUpdateLivingResponse(sessionId, stepId, {
+        data,
+        isCompleted: isCompleted ?? true,
+      });
+
+      res.status(201).json(livingResponse);
+    } catch (error) {
+      console.error("Error saving living response:", error);
+      res.status(500).json({ error: "Failed to save living response" });
+    }
+  });
+
+  // Get Living responses for a session
+  app.get("/api/sessions/:id/living-responses", async (req: Request, res: ExpressResponse) => {
+    try {
+      const sessionId = parseInt(req.params.id as string);
+      const responses = await storage.getLivingResponsesBySession(sessionId);
+      res.json(responses);
+    } catch (error) {
+      console.error("Error fetching living responses:", error);
+      res.status(500).json({ error: "Failed to fetch living responses" });
+    }
+  });
+
+  // Complete Living session (form-based - no AI processing needed)
+  app.post("/api/sessions/:id/complete-living", async (req: Request, res: ExpressResponse) => {
+    try {
+      const id = parseInt(req.params.id as string);
+      const session = await storage.getSession(id);
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Get all living responses
+      const livingResponses = await storage.getLivingResponsesBySession(id);
+
+      // Save Living report data as JSON
+      const reportData = {
+        clientName: session.clientName,
+        sessionId: id,
+        sessionType: 'living',
+        generatedAt: new Date().toISOString(),
+        responses: livingResponses.map(r => ({
+          stepId: r.stepId,
+          data: JSON.parse(r.data),
+          isCompleted: r.isCompleted,
+        })),
+      };
+
+      const { jsonPath } = await CloudStorageService.saveReport(session.clientName, id, reportData);
+
+      // Generate and save PDF
+      let pdfPath: string | null = null;
+      try {
+        const pdfBuffer = await generateLivingPdfBuffer(session, livingResponses);
+        pdfPath = await CloudStorageService.savePdf(session.clientName, id, pdfBuffer);
+        console.log("Living PDF saved to cloud storage:", pdfPath);
+      } catch (pdfError) {
+        console.error("Error saving Living PDF:", pdfError);
+      }
+
+      // Update session status
+      await storage.updateSession(id, {
+        status: "completed",
+        completedAt: new Date(),
+      });
+
+      res.json({ success: true, pdfPath, jsonPath });
+    } catch (error) {
+      console.error("Error completing Living session:", error);
+      res.status(500).json({ error: "Failed to complete Living session" });
     }
   });
 
@@ -770,7 +871,7 @@ ${responseContext}`
   });
 
   // ===== PDF EXPORT =====
-  
+
   app.get("/api/sessions/:id/export/pdf", async (req: Request, res: ExpressResponse) => {
     try {
       const id = parseInt(req.params.id as string);
@@ -779,35 +880,47 @@ ${responseContext}`
         return res.status(404).json({ error: "Session not found" });
       }
 
-      const responses = await storage.getResponsesBySession(id);
-      const report = await storage.getReport(id);
-
-      if (!report) {
-        return res.status(404).json({ error: "Report not found" });
-      }
-
-      // Fetch all questions from storage
-      const allQuestions = await storage.getActiveQuestions();
-
-      // Use the N4S-styled PDF generator
-      const sections = {
-        summary: report.summary,
-        designPreferences: report.designPreferences || "",
-        functionalNeeds: report.functionalNeeds || "",
-        lifestyleElements: report.lifestyleElements || "",
-        additionalNotes: report.additionalNotes || "",
-      };
-
-      const pdfBuffer = await generatePdfBuffer(session, responses, sections, allQuestions);
-
       // Create filename with client name and optional project
       const clientSlug = session.clientName.replace(/[^a-zA-Z0-9]/g, "_");
       const projectSlug = session.projectName ? `-${session.projectName.replace(/[^a-zA-Z0-9]/g, "_")}` : "";
-      const filename = `LuXeBrief-${clientSlug}${projectSlug}.pdf`;
 
-      res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.send(pdfBuffer);
+      // Check session type and generate appropriate PDF
+      const sessionType = (session as any).sessionType || 'lifestyle';
+
+      if (sessionType === 'living') {
+        // Generate Living PDF (form-based questionnaire)
+        const livingResponses = await storage.getLivingResponsesBySession(id);
+        const pdfBuffer = await generateLivingPdfBuffer(session, livingResponses);
+        const filename = `LuXeBrief-Living-${clientSlug}${projectSlug}.pdf`;
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+      } else {
+        // Generate Lifestyle PDF (audio-based questionnaire)
+        const responses = await storage.getResponsesBySession(id);
+        const report = await storage.getReport(id);
+
+        if (!report) {
+          return res.status(404).json({ error: "Report not found" });
+        }
+
+        const allQuestions = await storage.getActiveQuestions();
+        const sections = {
+          summary: report.summary,
+          designPreferences: report.designPreferences || "",
+          functionalNeeds: report.functionalNeeds || "",
+          lifestyleElements: report.lifestyleElements || "",
+          additionalNotes: report.additionalNotes || "",
+        };
+
+        const pdfBuffer = await generatePdfBuffer(session, responses, sections, allQuestions);
+        const filename = `LuXeBrief-Lifestyle-${clientSlug}${projectSlug}.pdf`;
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.send(pdfBuffer);
+      }
     } catch (error) {
       console.error("Error generating PDF:", error);
       res.status(500).json({ error: "Failed to generate PDF" });
@@ -860,11 +973,11 @@ async function generatePdfBuffer(
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
 
-      // Footer: © 2026 N4S Luxury Residential Advisory | Page X of Y
+      // Footer: © 2026 Not4Sale LLC | Page X of Y
       doc.fontSize(8)
          .fillColor(N4S_MUTED)
          .text(
-           `© 2026 N4S Luxury Residential Advisory`,
+           `© 2026 Not4Sale LLC`,
            margin,
            pageHeight - 30,
            { continued: true, width: contentWidth / 2 }
@@ -1010,6 +1123,333 @@ async function generatePdfBuffer(
       doc.moveDown(1);
     }
     doc.moveDown(0.5);
+  }
+
+  // Add headers and footers to all pages
+  addPageHeaderFooter();
+
+  doc.end();
+
+  return pdfPromise;
+}
+
+// Generate PDF for Living questionnaire (form-based)
+async function generateLivingPdfBuffer(
+  session: Session,
+  livingResponses: LivingResponse[]
+): Promise<Buffer> {
+  const doc = new PDFDocument({
+    margin: 50,
+    size: 'A4',
+    bufferPages: true
+  });
+  const chunks: Buffer[] = [];
+
+  doc.on("data", (chunk) => chunks.push(chunk));
+
+  const pdfPromise = new Promise<Buffer>((resolve) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+
+  const pageWidth = doc.page.width;
+  const pageHeight = doc.page.height;
+  const margin = 50;
+  const contentWidth = pageWidth - (margin * 2);
+  const generatedDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  const projectDisplay = session.projectName || "Luxury Residence Project";
+
+  // Helper function to add header and footer to each page
+  const addPageHeaderFooter = () => {
+    const pageCount = doc.bufferedPageRange().count;
+    for (let i = 0; i < pageCount; i++) {
+      doc.switchToPage(i);
+      doc.fontSize(8)
+         .fillColor(N4S_MUTED)
+         .text(`© 2026 Not4Sale LLC`, margin, pageHeight - 30, { continued: true, width: contentWidth / 2 })
+         .text(`Page ${i + 1} of ${pageCount}`, margin + contentWidth / 2, pageHeight - 30, { align: 'right', width: contentWidth / 2 });
+    }
+  };
+
+  // Parse response data from JSON strings
+  const responseDataMap: Record<string, any> = {};
+  for (const response of livingResponses) {
+    try {
+      responseDataMap[response.stepId] = JSON.parse(response.data);
+    } catch {
+      responseDataMap[response.stepId] = {};
+    }
+  }
+
+  // ========== TITLE PAGE ==========
+  // Navy header bar
+  doc.rect(0, 0, pageWidth, 60).fill(N4S_NAVY);
+  doc.fontSize(14).fillColor('#ffffff').text("N4S", margin, 22);
+  doc.fontSize(9).fillColor('#ffffff').text("Luxury Residential Advisory", margin, 38);
+  doc.fontSize(10).fillColor('#ffffff').text("LuXeBrief Living Brief", pageWidth - margin - 150, 22, { width: 150, align: 'right' });
+  doc.fontSize(9).fillColor('#ffffff').text(generatedDate, pageWidth - margin - 150, 38, { width: 150, align: 'right' });
+
+  doc.y = 100;
+  doc.fontSize(11).fillColor(N4S_TEXT).font('Helvetica-Bold').text("Project: ", margin, doc.y, { continued: true });
+  doc.font("Helvetica").text(projectDisplay);
+  doc.moveDown(0.3);
+  doc.font('Helvetica-Bold').text("Client: ", { continued: true });
+  doc.font("Helvetica").text(session.clientName);
+
+  doc.moveDown(3);
+  doc.fontSize(24).fillColor(N4S_NAVY).font('Helvetica-Bold').text("LuXeBrief Living Brief", { align: "center" });
+  doc.moveDown(0.5);
+  doc.fontSize(12).fillColor(N4S_MUTED).font("Helvetica").text("Comprehensive space program and living requirements", { align: "center" });
+  doc.moveDown(3);
+
+  // ========== SECTION RENDERING HELPER ==========
+  const renderSection = (title: string, content: string | string[] | undefined) => {
+    if (!content || (Array.isArray(content) && content.length === 0)) return;
+
+    if (doc.y > pageHeight - 150) doc.addPage();
+
+    doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text(title);
+    doc.moveDown(0.5);
+    doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
+    doc.moveDown(0.8);
+
+    if (Array.isArray(content)) {
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(content.join(", "), { lineGap: 4 });
+    } else {
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(content, { lineGap: 4 });
+    }
+    doc.moveDown(1.5);
+  };
+
+  const renderYesNo = (label: string, value: boolean | undefined) => {
+    if (value === undefined) return;
+    doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica")
+      .text(`${label}: `, { continued: true })
+      .fillColor(value ? '#2dd4bf' : N4S_MUTED)
+      .text(value ? 'Yes' : 'No');
+    doc.moveDown(0.5);
+  };
+
+  // ========== WORK & PRODUCTIVITY ==========
+  const workData = responseDataMap['work'] || {};
+  if (Object.keys(workData).length > 0) {
+    doc.fontSize(16).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Work & Productivity");
+    doc.moveDown(0.5);
+    doc.moveTo(margin, doc.y).lineTo(margin + 80, doc.y).strokeColor(N4S_GOLD).lineWidth(3).stroke();
+    doc.moveDown(1);
+
+    const wfhLabels: Record<string, string> = {
+      'never': 'Never',
+      'sometimes': 'Sometimes (1-2 days/week)',
+      'often': 'Often (3-4 days/week)',
+      'always': 'Always (Full Remote)'
+    };
+
+    if (workData.workFromHome) {
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica")
+        .text(`Work from Home Frequency: ${wfhLabels[workData.workFromHome] || workData.workFromHome}`);
+      doc.moveDown(0.5);
+    }
+    if (workData.wfhPeopleCount) {
+      doc.text(`People Working from Home: ${workData.wfhPeopleCount}`);
+      doc.moveDown(0.5);
+    }
+    renderYesNo("Separate Offices Required", workData.separateOfficesRequired);
+    if (workData.officeRequirements) {
+      doc.moveDown(0.5);
+      doc.text(`Office Requirements: ${workData.officeRequirements}`);
+    }
+    doc.moveDown(1.5);
+  }
+
+  // ========== HOBBIES & ACTIVITIES ==========
+  const hobbiesData = responseDataMap['hobbies'] || {};
+  if (Object.keys(hobbiesData).length > 0) {
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(16).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Hobbies & Activities");
+    doc.moveDown(0.5);
+    doc.moveTo(margin, doc.y).lineTo(margin + 80, doc.y).strokeColor(N4S_GOLD).lineWidth(3).stroke();
+    doc.moveDown(1);
+
+    if (hobbiesData.hobbies?.length) {
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica")
+        .text(`Space-Requiring Hobbies: ${hobbiesData.hobbies.join(", ")}`);
+      doc.moveDown(0.5);
+    }
+    if (hobbiesData.hobbyDetails) {
+      doc.text(`Details: ${hobbiesData.hobbyDetails}`);
+      doc.moveDown(0.5);
+    }
+    renderYesNo("Late Night Media Use", hobbiesData.lateNightMediaUse);
+    doc.moveDown(1.5);
+  }
+
+  // ========== ENTERTAINING ==========
+  const entertainingData = responseDataMap['entertaining'] || {};
+  if (Object.keys(entertainingData).length > 0) {
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(16).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Entertaining");
+    doc.moveDown(0.5);
+    doc.moveTo(margin, doc.y).lineTo(margin + 80, doc.y).strokeColor(N4S_GOLD).lineWidth(3).stroke();
+    doc.moveDown(1);
+
+    if (entertainingData.entertainingFrequency) {
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica")
+        .text(`Frequency: ${entertainingData.entertainingFrequency}`);
+      doc.moveDown(0.5);
+    }
+    if (entertainingData.entertainingStyle) {
+      doc.text(`Style: ${entertainingData.entertainingStyle}`);
+      doc.moveDown(0.5);
+    }
+    if (entertainingData.typicalGuestCount) {
+      doc.text(`Typical Guest Count: ${entertainingData.typicalGuestCount}`);
+    }
+    doc.moveDown(1.5);
+  }
+
+  // ========== WELLNESS & PRIVACY ==========
+  const wellnessData = responseDataMap['wellness'] || {};
+  if (Object.keys(wellnessData).length > 0) {
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(16).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Wellness & Privacy");
+    doc.moveDown(0.5);
+    doc.moveTo(margin, doc.y).lineTo(margin + 80, doc.y).strokeColor(N4S_GOLD).lineWidth(3).stroke();
+    doc.moveDown(1);
+
+    if (wellnessData.wellnessPriorities?.length) {
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica")
+        .text(`Wellness Priorities: ${wellnessData.wellnessPriorities.join(", ")}`);
+      doc.moveDown(0.5);
+    }
+    if (wellnessData.privacyLevelRequired) {
+      doc.text(`Privacy Level: ${wellnessData.privacyLevelRequired}/5`);
+      doc.moveDown(0.5);
+    }
+    if (wellnessData.noiseSensitivity) {
+      doc.text(`Noise Sensitivity: ${wellnessData.noiseSensitivity}/5`);
+      doc.moveDown(0.5);
+    }
+    if (wellnessData.indoorOutdoorLiving) {
+      doc.text(`Indoor-Outdoor Integration: ${wellnessData.indoorOutdoorLiving}/5`);
+    }
+    doc.moveDown(1.5);
+  }
+
+  // ========== INTERIOR SPACES ==========
+  const interiorData = responseDataMap['interior'] || {};
+  if (Object.keys(interiorData).length > 0) {
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(16).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Interior Spaces");
+    doc.moveDown(0.5);
+    doc.moveTo(margin, doc.y).lineTo(margin + 80, doc.y).strokeColor(N4S_GOLD).lineWidth(3).stroke();
+    doc.moveDown(1);
+
+    if (interiorData.mustHaveSpaces?.length) {
+      doc.fontSize(12).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Must Have:");
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(interiorData.mustHaveSpaces.join(", "));
+      doc.moveDown(0.8);
+    }
+    if (interiorData.niceToHaveSpaces?.length) {
+      doc.fontSize(12).fillColor(N4S_GOLD).font('Helvetica-Bold').text("Would Like (if desired total sq footage and budget allows):");
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(interiorData.niceToHaveSpaces.join(", "));
+      doc.moveDown(0.8);
+    }
+
+    // Clarification questions
+    doc.fontSize(12).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Space Clarifications:");
+    doc.moveDown(0.3);
+    renderYesNo("Separate Family Room", interiorData.wantsSeparateFamilyRoom);
+    renderYesNo("Second Formal Living", interiorData.wantsSecondFormalLiving);
+    renderYesNo("Built-in Bar", interiorData.wantsBar);
+    renderYesNo("Kids Bunk Room", interiorData.wantsBunkRoom);
+    renderYesNo("Breakfast Nook", interiorData.wantsBreakfastNook);
+    doc.moveDown(1.5);
+  }
+
+  // ========== EXTERIOR AMENITIES ==========
+  const exteriorData = responseDataMap['exterior'] || {};
+  if (Object.keys(exteriorData).length > 0) {
+    doc.addPage();
+    doc.rect(0, 0, pageWidth, 40).fill(N4S_NAVY);
+    doc.fontSize(12).fillColor('#ffffff').text("Exterior Amenities", margin, 14);
+    doc.y = 60;
+
+    const renderExteriorCategory = (title: string, mustHave: string[] | undefined, wouldLike: string[] | undefined) => {
+      if ((!mustHave || mustHave.length === 0) && (!wouldLike || wouldLike.length === 0)) return;
+
+      doc.fontSize(13).fillColor(N4S_NAVY).font('Helvetica-Bold').text(title);
+      doc.moveDown(0.3);
+      if (mustHave?.length) {
+        doc.fontSize(10).fillColor('#2dd4bf').font('Helvetica-Bold').text("Must Have: ", { continued: true });
+        doc.fillColor(N4S_TEXT).font("Helvetica").text(mustHave.join(", "));
+      }
+      if (wouldLike?.length) {
+        doc.fontSize(10).fillColor(N4S_GOLD).font('Helvetica-Bold').text("Would Like: ", { continued: true });
+        doc.fillColor(N4S_TEXT).font("Helvetica").text(wouldLike.join(", "));
+      }
+      doc.moveDown(1);
+    };
+
+    renderExteriorCategory("Pool & Water Features", exteriorData.mustHavePoolWater, exteriorData.wouldLikePoolWater);
+    renderExteriorCategory("Sport & Recreation", exteriorData.mustHaveSport, exteriorData.wouldLikeSport);
+    renderExteriorCategory("Outdoor Living", exteriorData.mustHaveOutdoorLiving, exteriorData.wouldLikeOutdoorLiving);
+    renderExteriorCategory("Gardens & Landscaping", exteriorData.mustHaveGarden, exteriorData.wouldLikeGarden);
+    renderExteriorCategory("Structures", exteriorData.mustHaveStructures, exteriorData.wouldLikeStructures);
+    renderExteriorCategory("Access & Entry", exteriorData.mustHaveAccess, exteriorData.wouldLikeAccess);
+  }
+
+  // ========== FINAL DETAILS ==========
+  const finalData = responseDataMap['final'] || {};
+  if (Object.keys(finalData).length > 0) {
+    if (doc.y > pageHeight - 200) doc.addPage();
+
+    doc.fontSize(16).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Garage, Technology & Details");
+    doc.moveDown(0.5);
+    doc.moveTo(margin, doc.y).lineTo(margin + 80, doc.y).strokeColor(N4S_GOLD).lineWidth(3).stroke();
+    doc.moveDown(1);
+
+    if (finalData.garageSize) {
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(`Garage Size: ${finalData.garageSize} cars`);
+      doc.moveDown(0.5);
+    }
+    if (finalData.garageFeatures?.length) {
+      doc.text(`Garage Features: ${finalData.garageFeatures.join(", ")}`);
+      doc.moveDown(0.5);
+    }
+    if (finalData.technologyRequirements?.length) {
+      doc.text(`Technology: ${finalData.technologyRequirements.join(", ")}`);
+      doc.moveDown(0.5);
+    }
+    if (finalData.sustainabilityPriorities?.length) {
+      doc.text(`Sustainability: ${finalData.sustainabilityPriorities.join(", ")}`);
+      doc.moveDown(0.5);
+    }
+    if (finalData.viewPriorityRooms?.length) {
+      doc.text(`View Priority Rooms: ${finalData.viewPriorityRooms.join(", ")}`);
+      doc.moveDown(0.5);
+    }
+    if (finalData.minimumLotSize) {
+      doc.text(`Minimum Lot Size: ${finalData.minimumLotSize}`);
+      doc.moveDown(0.5);
+    }
+    if (finalData.minimumSetback) {
+      doc.text(`Minimum Setback: ${finalData.minimumSetback}`);
+      doc.moveDown(0.5);
+    }
+    if (finalData.currentSpacePainPoints) {
+      doc.moveDown(0.5);
+      doc.fontSize(12).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Current Space Pain Points:");
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(finalData.currentSpacePainPoints);
+    }
+    if (finalData.dailyRoutinesSummary) {
+      doc.moveDown(0.5);
+      doc.fontSize(12).fillColor(N4S_NAVY).font('Helvetica-Bold').text("Daily Routines:");
+      doc.fontSize(11).fillColor(N4S_TEXT).font("Helvetica").text(finalData.dailyRoutinesSummary);
+    }
   }
 
   // Add headers and footers to all pages

@@ -11,6 +11,8 @@ import {
   type InsertQuestion,
   type SiteContent,
   type InsertSiteContent,
+  type LivingResponse,
+  type InsertLivingResponse,
   defaultQuestions,
   defaultSiteContent,
   users,
@@ -18,7 +20,8 @@ import {
   responses,
   reports,
   questions,
-  siteContent
+  siteContent,
+  livingResponses
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { eq, and, asc } from "drizzle-orm";
@@ -35,10 +38,15 @@ export interface IStorage {
   createSession(session: InsertSession): Promise<Session>;
   updateSession(id: number, updates: Partial<Session>): Promise<Session | undefined>;
 
-  // Responses
+  // Responses (Lifestyle - audio-based)
   getResponsesBySession(sessionId: number): Promise<Response[]>;
   getResponse(sessionId: number, questionId: number): Promise<Response | undefined>;
   createOrUpdateResponse(sessionId: number, questionId: number, data: Partial<InsertResponse>): Promise<Response>;
+
+  // Living Responses (form-based)
+  getLivingResponsesBySession(sessionId: number): Promise<LivingResponse[]>;
+  getLivingResponse(sessionId: number, stepId: string): Promise<LivingResponse | undefined>;
+  createOrUpdateLivingResponse(sessionId: number, stepId: string, data: Partial<InsertLivingResponse>): Promise<LivingResponse>;
 
   // Reports
   getReport(sessionId: number): Promise<Report | undefined>;
@@ -242,6 +250,49 @@ export class MySQLStorage implements IStorage {
     return response[0]!;
   }
 
+  // Living Responses (form-based questionnaire)
+  async getLivingResponsesBySession(sessionId: number): Promise<LivingResponse[]> {
+    const db = await this.getDb();
+    return db.select().from(livingResponses).where(eq(livingResponses.sessionId, sessionId));
+  }
+
+  async getLivingResponse(sessionId: number, stepId: string): Promise<LivingResponse | undefined> {
+    const db = await this.getDb();
+    const result = await db.select().from(livingResponses)
+      .where(and(eq(livingResponses.sessionId, sessionId), eq(livingResponses.stepId, stepId)))
+      .limit(1);
+    return result[0];
+  }
+
+  async createOrUpdateLivingResponse(
+    sessionId: number,
+    stepId: string,
+    data: Partial<InsertLivingResponse>
+  ): Promise<LivingResponse> {
+    const db = await this.getDb();
+    const existing = await this.getLivingResponse(sessionId, stepId);
+
+    if (existing) {
+      await db.update(livingResponses).set({
+        data: data.data !== undefined ? data.data : existing.data,
+        isCompleted: data.isCompleted !== undefined ? data.isCompleted : existing.isCompleted,
+      }).where(eq(livingResponses.id, existing.id));
+
+      return (await this.getLivingResponse(sessionId, stepId))!;
+    }
+
+    const result = await db.insert(livingResponses).values({
+      sessionId,
+      stepId,
+      data: data.data || "{}",
+      isCompleted: data.isCompleted ?? false,
+    });
+
+    const insertId = result[0].insertId;
+    const response = await db.select().from(livingResponses).where(eq(livingResponses.id, insertId)).limit(1);
+    return response[0]!;
+  }
+
   // Reports
   async getReport(sessionId: number): Promise<Report | undefined> {
     const db = await this.getDb();
@@ -372,11 +423,13 @@ export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private sessions: Map<number, Session>;
   private responses: Map<string, Response>;
+  private livingResponses: Map<string, LivingResponse>;
   private reports: Map<number, Report>;
   private questions: Map<number, Question>;
   private content: Map<string, SiteContent>;
   private nextSessionId: number;
   private nextResponseId: number;
+  private nextLivingResponseId: number;
   private nextReportId: number;
   private nextQuestionId: number;
   private nextContentId: number;
@@ -385,11 +438,13 @@ export class MemStorage implements IStorage {
     this.users = new Map();
     this.sessions = new Map();
     this.responses = new Map();
+    this.livingResponses = new Map();
     this.reports = new Map();
     this.questions = new Map();
     this.content = new Map();
     this.nextSessionId = 1;
     this.nextResponseId = 1;
+    this.nextLivingResponseId = 1;
     this.nextReportId = 1;
     this.nextQuestionId = 1;
     this.nextContentId = 1;
@@ -523,6 +578,47 @@ export class MemStorage implements IStorage {
       createdAt: new Date(),
     };
     this.responses.set(key, response);
+    return response;
+  }
+
+  // Living Responses (form-based questionnaire)
+  async getLivingResponsesBySession(sessionId: number): Promise<LivingResponse[]> {
+    return Array.from(this.livingResponses.values()).filter(r => r.sessionId === sessionId);
+  }
+
+  async getLivingResponse(sessionId: number, stepId: string): Promise<LivingResponse | undefined> {
+    return this.livingResponses.get(`${sessionId}-${stepId}`);
+  }
+
+  async createOrUpdateLivingResponse(
+    sessionId: number,
+    stepId: string,
+    data: Partial<InsertLivingResponse>
+  ): Promise<LivingResponse> {
+    const key = `${sessionId}-${stepId}`;
+    const existing = this.livingResponses.get(key);
+
+    if (existing) {
+      const updated: LivingResponse = {
+        ...existing,
+        data: data.data !== undefined ? data.data : existing.data,
+        isCompleted: data.isCompleted !== undefined ? data.isCompleted : existing.isCompleted,
+        updatedAt: new Date(),
+      };
+      this.livingResponses.set(key, updated);
+      return updated;
+    }
+
+    const response: LivingResponse = {
+      id: this.nextLivingResponseId++,
+      sessionId,
+      stepId,
+      data: data.data || "{}",
+      isCompleted: data.isCompleted ?? false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.livingResponses.set(key, response);
     return response;
   }
 
@@ -690,6 +786,9 @@ class StorageProxy implements IStorage {
   getResponsesBySession(sessionId: number) { return getStorage().then(s => s.getResponsesBySession(sessionId)); }
   getResponse(sessionId: number, questionId: number) { return getStorage().then(s => s.getResponse(sessionId, questionId)); }
   createOrUpdateResponse(sessionId: number, questionId: number, data: Partial<InsertResponse>) { return getStorage().then(s => s.createOrUpdateResponse(sessionId, questionId, data)); }
+  getLivingResponsesBySession(sessionId: number) { return getStorage().then(s => s.getLivingResponsesBySession(sessionId)); }
+  getLivingResponse(sessionId: number, stepId: string) { return getStorage().then(s => s.getLivingResponse(sessionId, stepId)); }
+  createOrUpdateLivingResponse(sessionId: number, stepId: string, data: Partial<InsertLivingResponse>) { return getStorage().then(s => s.createOrUpdateLivingResponse(sessionId, stepId, data)); }
   getReport(sessionId: number) { return getStorage().then(s => s.getReport(sessionId)); }
   createReport(report: InsertReport) { return getStorage().then(s => s.createReport(report)); }
   getQuestions() { return getStorage().then(s => s.getQuestions()); }

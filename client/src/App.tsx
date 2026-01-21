@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
 import BriefingPage from "@/pages/briefing";
+import LivingPage from "@/pages/living";
 import ReportPage from "@/pages/report";
 import AdminPage from "@/pages/admin";
 
@@ -15,6 +16,7 @@ function Router() {
     <Switch>
       <Route path="/" component={HomePage} />
       <Route path="/briefing/:id" component={BriefingPage} />
+      <Route path="/living/:id" component={LivingPage} />
       <Route path="/report/:id" component={ReportPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />

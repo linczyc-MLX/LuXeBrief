@@ -23,10 +23,11 @@ export const sessions = mysqlTable("sessions", {
   id: int("id").primaryKey().autoincrement(),
   clientName: varchar("client_name", { length: 255 }).notNull(),
   projectName: varchar("project_name", { length: 255 }), // Optional project name for reports
+  sessionType: varchar("session_type", { length: 20 }).notNull().default("lifestyle"), // 'lifestyle' (audio) or 'living' (form)
   accessToken: varchar("access_token", { length: 255 }), // Random token for secure file access
   folderPath: varchar("folder_path", { length: 500 }), // Path to client data folder
   status: varchar("status", { length: 50 }).notNull().default("in_progress"), // in_progress, completed
-  currentQuestionIndex: int("current_question_index").notNull().default(0),
+  currentQuestionIndex: int("current_question_index").notNull().default(0), // For lifestyle: question index, for living: step index
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
   completedAt: timestamp("completed_at"),
   // N4S Integration fields
@@ -36,6 +37,13 @@ export const sessions = mysqlTable("sessions", {
   subdomain: varchar("subdomain", { length: 100 }), // e.g., 'pthornwood' for pthornwood.luxebrief.not-4.sale
   invitationSentAt: timestamp("invitation_sent_at"), // When invitation email was sent
 });
+
+// Session type constants
+export type SessionType = "lifestyle" | "living";
+export const SESSION_TYPES = {
+  LIFESTYLE: "lifestyle" as const, // Audio-based questionnaire
+  LIVING: "living" as const,       // Form-based questionnaire
+};
 
 export const insertSessionSchema = createInsertSchema(sessions).omit({
   id: true,
@@ -255,3 +263,149 @@ export const defaultSiteContent: Omit<SiteContent, "id" | "updatedAt">[] = [
   { key: "report.success_title", value: "Your Design Brief is Complete", label: "Success Title", section: "Report" },
   { key: "report.success_subtitle", value: "We've analyzed your responses and created a comprehensive summary of your design vision.", label: "Success Subtitle", section: "Report" },
 ];
+
+// ===== LuXeBrief Living: Form-based questionnaire steps =====
+
+// Living responses table (stores structured form data per step)
+export const livingResponses = mysqlTable("living_responses", {
+  id: int("id").primaryKey().autoincrement(),
+  sessionId: int("session_id").notNull(),
+  stepId: varchar("step_id", { length: 50 }).notNull(), // e.g., 'work', 'hobbies', 'interior'
+  data: text("data").notNull(), // JSON stringified form data
+  isCompleted: boolean("is_completed").notNull().default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertLivingResponseSchema = createInsertSchema(livingResponses).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type LivingResponse = typeof livingResponses.$inferSelect;
+export type InsertLivingResponse = z.infer<typeof insertLivingResponseSchema>;
+
+// Living step definitions
+export interface LivingStep {
+  id: string;
+  title: string;
+  description: string;
+  icon: string; // Lucide icon name
+  sortOrder: number;
+}
+
+export const livingSteps: LivingStep[] = [
+  {
+    id: "work",
+    title: "Work & Productivity",
+    description: "Tell us about your work-from-home needs and office requirements.",
+    icon: "Briefcase",
+    sortOrder: 1,
+  },
+  {
+    id: "hobbies",
+    title: "Hobbies & Activities",
+    description: "What activities require dedicated space in your home?",
+    icon: "Palette",
+    sortOrder: 2,
+  },
+  {
+    id: "entertaining",
+    title: "Entertaining",
+    description: "How do you envision hosting guests in your new residence?",
+    icon: "Users",
+    sortOrder: 3,
+  },
+  {
+    id: "wellness",
+    title: "Wellness & Privacy",
+    description: "Your priorities for health, wellbeing, and personal space.",
+    icon: "Heart",
+    sortOrder: 4,
+  },
+  {
+    id: "interior",
+    title: "Interior Spaces",
+    description: "Select the interior spaces essential to your residence.",
+    icon: "Home",
+    sortOrder: 5,
+  },
+  {
+    id: "exterior",
+    title: "Exterior Amenities",
+    description: "Define your outdoor living and recreational requirements.",
+    icon: "Trees",
+    sortOrder: 6,
+  },
+  {
+    id: "final",
+    title: "Garage, Technology & Details",
+    description: "Complete your program with final specifications.",
+    icon: "Settings",
+    sortOrder: 7,
+  },
+];
+
+// Living step data interfaces for type safety
+export interface LivingStepData {
+  work?: {
+    workFromHome?: string; // 'never' | 'sometimes' | 'often' | 'always'
+    wfhPeopleCount?: number;
+    separateOfficesRequired?: boolean;
+    officeRequirements?: string;
+  };
+  hobbies?: {
+    hobbies?: string[]; // Array of hobby values
+    hobbyDetails?: string;
+    lateNightMediaUse?: boolean;
+  };
+  entertaining?: {
+    entertainingFrequency?: string;
+    entertainingStyle?: string;
+    typicalGuestCount?: string;
+  };
+  wellness?: {
+    wellnessPriorities?: string[];
+    privacyLevelRequired?: number; // 1-5
+    noiseSensitivity?: number; // 1-5
+    indoorOutdoorLiving?: number; // 1-5
+  };
+  interior?: {
+    mustHaveSpaces?: string[];
+    niceToHaveSpaces?: string[];
+    wantsSeparateFamilyRoom?: boolean;
+    wantsSecondFormalLiving?: boolean;
+    wantsBar?: boolean;
+    wantsBunkRoom?: boolean;
+    wantsBreakfastNook?: boolean;
+  };
+  exterior?: {
+    mustHavePoolWater?: string[];
+    wouldLikePoolWater?: string[];
+    mustHaveSport?: string[];
+    wouldLikeSport?: string[];
+    mustHaveOutdoorLiving?: string[];
+    wouldLikeOutdoorLiving?: string[];
+    mustHaveGarden?: string[];
+    wouldLikeGarden?: string[];
+    mustHaveStructures?: string[];
+    wouldLikeStructures?: string[];
+    mustHaveAccess?: string[];
+    wouldLikeAccess?: string[];
+  };
+  final?: {
+    garageSize?: string;
+    garageFeatures?: string[];
+    technologyRequirements?: string[];
+    sustainabilityPriorities?: string[];
+    viewPriorityRooms?: string[];
+    privacyNoNeighbors?: string;
+    privacyPerimeter?: string;
+    minimumSetback?: string;
+    minimumLotSize?: string;
+    adjacencyRequirements?: string;
+    currentSpacePainPoints?: string;
+    dailyRoutinesSummary?: string;
+  };
+}
