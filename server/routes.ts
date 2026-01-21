@@ -163,6 +163,7 @@ export async function registerRoutes(
           projectName: projectName || "Luxury Residence Project",
           invitationUrl,
           principalType: principalType as "principal" | "secondary",
+          sessionType: validSessionType,
         });
       } catch (emailError) {
         console.error("[N4S] Email sending failed:", emailError);

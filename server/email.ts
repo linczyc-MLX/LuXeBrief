@@ -21,12 +21,20 @@ interface LuXeBriefInvitationParams {
   projectName: string;
   invitationUrl: string;
   principalType: "principal" | "secondary";
+  sessionType?: "lifestyle" | "living";
 }
 
 export async function sendLuXeBriefInvitation(params: LuXeBriefInvitationParams): Promise<boolean> {
-  const { clientName, clientEmail, projectName, invitationUrl, principalType } = params;
+  const { clientName, clientEmail, projectName, invitationUrl, principalType, sessionType = "lifestyle" } = params;
 
   const roleLabel = principalType === "principal" ? "Principal" : "Secondary Stakeholder";
+
+  // Conditional content based on questionnaire type
+  const isLiving = sessionType === "living";
+  const questionnaireType = isLiving ? "Living" : "Lifestyle";
+  const questionnaireDescription = isLiving
+    ? "This form-based questionnaire will help us understand your space requirements and preferences to create a residence that perfectly suits your needs."
+    : "This voice-guided experience will help us understand your daily routines, preferences, and lifestyle needs to create a residence that truly reflects how you live.";
 
   const htmlContent = `
 <!DOCTYPE html>
@@ -34,7 +42,7 @@ export async function sendLuXeBriefInvitation(params: LuXeBriefInvitationParams)
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LuXeBrief Lifestyle Questionnaire</title>
+  <title>LuXeBrief ${questionnaireType} Questionnaire</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 20px;">
@@ -52,7 +60,7 @@ export async function sendLuXeBriefInvitation(params: LuXeBriefInvitationParams)
                   </td>
                   <td align="right">
                     <p style="margin: 0; color: #ffffff; font-size: 12px; opacity: 0.8;">LuXeBrief</p>
-                    <p style="margin: 0; color: #ffffff; font-size: 12px; opacity: 0.8;">Lifestyle Questionnaire</p>
+                    <p style="margin: 0; color: #ffffff; font-size: 12px; opacity: 0.8;">${questionnaireType} Questionnaire</p>
                   </td>
                 </tr>
               </table>
@@ -67,11 +75,11 @@ export async function sendLuXeBriefInvitation(params: LuXeBriefInvitationParams)
               </h2>
 
               <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
-                You've been invited to complete a LuXeBrief lifestyle questionnaire as the <strong>${roleLabel}</strong> for the <strong>${projectName}</strong> project.
+                You've been invited to complete a LuXeBrief ${questionnaireType.toLowerCase()} questionnaire as the <strong>${roleLabel}</strong> for the <strong>${projectName}</strong> project.
               </p>
 
               <p style="margin: 0 0 30px; color: #666666; font-size: 15px; line-height: 1.6;">
-                This voice-guided experience will help us understand your daily routines, preferences, and lifestyle needs to create a residence that truly reflects how you live.
+                ${questionnaireDescription}
               </p>
 
               <!-- CTA Button -->
@@ -119,9 +127,9 @@ export async function sendLuXeBriefInvitation(params: LuXeBriefInvitationParams)
   const textContent = `
 Welcome, ${clientName}
 
-You've been invited to complete a LuXeBrief lifestyle questionnaire as the ${roleLabel} for the ${projectName} project.
+You've been invited to complete a LuXeBrief ${questionnaireType.toLowerCase()} questionnaire as the ${roleLabel} for the ${projectName} project.
 
-This voice-guided experience will help us understand your daily routines, preferences, and lifestyle needs to create a residence that truly reflects how you live.
+${questionnaireDescription}
 
 Click here to begin: ${invitationUrl}
 
@@ -137,7 +145,7 @@ Your responses are confidential and will only be shared with your project team.
     const info = await transporter.sendMail({
       from: '"N4S Luxury Residential Advisory" <advisor@not-4.sale>',
       to: clientEmail,
-      subject: `LuXeBrief Lifestyle Questionnaire - ${projectName}`,
+      subject: `LuXeBrief ${questionnaireType} Questionnaire - ${projectName}`,
       text: textContent,
       html: htmlContent,
     });
