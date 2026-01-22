@@ -422,6 +422,21 @@ export async function registerRoutes(
         completedAt: new Date(),
       });
 
+      // Create report record for Living session (so Report page works)
+      await storage.createReport({
+        sessionId: id,
+        summary: `Living Space Program completed for ${session.clientName}`,
+        designPreferences: JSON.stringify({
+          type: 'living',
+          data: livingResponses.map(r => ({ stepId: r.stepId, data: JSON.parse(r.data) }))
+        }),
+        functionalNeeds: null,
+        lifestyleElements: null,
+        additionalNotes: null,
+        jsonFilePath: jsonPath,
+        pdfFilePath: pdfPath,
+      });
+
       res.json({ success: true, pdfPath, jsonPath });
     } catch (error) {
       console.error("Error completing Living session:", error);

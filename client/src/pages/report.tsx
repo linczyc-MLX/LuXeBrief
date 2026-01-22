@@ -40,6 +40,18 @@ export default function ReportPage() {
     queryKey: ["/api/sessions", id, "report"],
   });
 
+  // Determine session type for navigation
+  const sessionType = session?.sessionType || 'lifestyle';
+  const isLiving = sessionType === 'living';
+
+  const handleReturnHome = () => {
+    if (isLiving) {
+      setLocation('/living');
+    } else {
+      setLocation('/');
+    }
+  };
+
   const { data: questions = [], isLoading: questionsLoading } = useQuery<Question[]>({
     queryKey: ["/api/questions"],
   });
@@ -77,11 +89,14 @@ export default function ReportPage() {
   }
 
   if (!session || !session.report) {
+    const showLivingMessage = session?.sessionType === 'living';
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <p className="text-muted-foreground mb-4">Report not found</p>
-          <Button onClick={() => setLocation("/")} data-testid="button-go-home">
+          <p className="text-muted-foreground mb-4">
+            {showLivingMessage ? "Living report is being generated..." : "Report not found"}
+          </p>
+          <Button onClick={() => setLocation(showLivingMessage ? '/living' : '/')} data-testid="button-go-home">
             Return Home
           </Button>
         </div>
@@ -110,14 +125,14 @@ export default function ReportPage() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setLocation("/")}
+              onClick={handleReturnHome}
               data-testid="button-home"
             >
               <Home className="w-5 h-5" />
             </Button>
             <div>
               <p className="font-medium text-sm">{session.projectName || "LuXeBrief Project"}</p>
-              <p className="text-xs text-muted-foreground">Lifestyle Brief</p>
+              <p className="text-xs text-muted-foreground">{isLiving ? "Living Space Program" : "Lifestyle Brief"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -138,10 +153,13 @@ export default function ReportPage() {
             <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
           <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-3">
-            LuXeBrief Lifestyle
+            {isLiving ? "Living Space Program" : "LuXeBrief Lifestyle"}
           </h1>
           <p className="text-lg text-muted-foreground max-w-lg mx-auto">
-            A comprehensive summary of your vision for your ultra-luxury residence.
+            {isLiving
+              ? "A comprehensive summary of your space requirements and living preferences."
+              : "A comprehensive summary of your vision for your ultra-luxury residence."
+            }
           </p>
           {/* Client & Project Info */}
           <div className="mt-6 p-4 bg-muted/30 rounded-lg inline-block">
@@ -257,9 +275,9 @@ export default function ReportPage() {
 
         {/* Footer Actions */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-12 pt-8 border-t border-border">
-          <Button variant="outline" onClick={() => setLocation("/")} className="gap-2" data-testid="button-new-session">
+          <Button variant="outline" onClick={handleReturnHome} className="gap-2" data-testid="button-new-session">
             <ArrowLeft className="w-4 h-4" />
-            Start New Briefing
+            {isLiving ? "Start New Living Program" : "Start New Briefing"}
           </Button>
           <Button onClick={handleDownloadPDF} className="gap-2" data-testid="button-download-pdf-bottom">
             <Download className="w-4 h-4" />

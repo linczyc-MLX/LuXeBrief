@@ -676,6 +676,42 @@ function ExteriorStep({ data, onChange }: StepProps) {
     );
   };
 
+  const ancillaryOptions = [
+    { value: "guest-house", label: "Guest House" },
+    { value: "adu", label: "ADU/In-Law Suite" },
+    { value: "caretaker-cottage", label: "Caretaker's Cottage" },
+    { value: "staff-quarters", label: "Staff Quarters" },
+    { value: "workshop-studio", label: "Workshop/Studio" },
+    { value: "greenhouse", label: "Greenhouse" },
+  ];
+
+  const arrivalOptions = [
+    { value: "motor-court", label: "Motor Court" },
+    { value: "porte-cochere", label: "Porte-Cochère" },
+    { value: "security-gate", label: "Security Gate" },
+    { value: "guardhouse", label: "Guardhouse" },
+    { value: "circular-drive", label: "Circular Drive" },
+    { value: "separate-service", label: "Separate Service Entry" },
+  ];
+
+  const privacyOptions = [
+    { value: "perimeter-wall", label: "Perimeter Wall" },
+    { value: "hedging-screening", label: "Hedging/Screening" },
+    { value: "berming", label: "Berming/Landforms" },
+    { value: "tree-buffer", label: "Tree Buffer" },
+    { value: "water-buffer", label: "Water Feature Buffer" },
+  ];
+
+  const gardenOptions = [
+    { value: "formal-gardens", label: "Formal Gardens" },
+    { value: "cutting-garden", label: "Cutting Garden" },
+    { value: "orchard", label: "Orchard" },
+    { value: "vegetable-garden", label: "Vegetable Garden" },
+    { value: "meditation-garden", label: "Meditation Garden" },
+    { value: "zen-garden", label: "Zen/Japanese Garden" },
+    { value: "native-plantings", label: "Native Plantings" },
+  ];
+
   return (
     <div className="space-y-6">
       <ExteriorCategory
@@ -695,6 +731,30 @@ function ExteriorStep({ data, onChange }: StepProps) {
         options={outdoorLivingOptions}
         mustField="mustHaveOutdoorLiving"
         wouldField="wouldLikeOutdoorLiving"
+      />
+      <ExteriorCategory
+        title="Ancillary Structures"
+        options={ancillaryOptions}
+        mustField="mustHaveStructures"
+        wouldField="wouldLikeStructures"
+      />
+      <ExteriorCategory
+        title="Arrival & Access"
+        options={arrivalOptions}
+        mustField="mustHaveAccess"
+        wouldField="wouldLikeAccess"
+      />
+      <ExteriorCategory
+        title="Privacy & Grounds"
+        options={privacyOptions}
+        mustField="mustHavePrivacy"
+        wouldField="wouldLikePrivacy"
+      />
+      <ExteriorCategory
+        title="Gardens & Landscape"
+        options={gardenOptions}
+        mustField="mustHaveGarden"
+        wouldField="wouldLikeGarden"
       />
     </div>
   );
@@ -737,6 +797,32 @@ function FinalStep({ data, onChange }: StepProps) {
     { value: "passive-house", label: "Passive House" },
     { value: "net-zero", label: "Net Zero" },
     { value: "water-reclaim", label: "Water Reclamation" },
+  ];
+
+  const viewPriorityOptions = [
+    { value: "primary-suite", label: "Primary Suite" },
+    { value: "living-room", label: "Living Room" },
+    { value: "dining-room", label: "Dining Room" },
+    { value: "kitchen", label: "Kitchen" },
+    { value: "office", label: "Home Office" },
+    { value: "family-room", label: "Family Room" },
+    { value: "outdoor-living", label: "Outdoor Living" },
+  ];
+
+  const accessibilityOptions = [
+    { value: "elevator", label: "Elevator" },
+    { value: "single-floor", label: "Single-Floor Living Option" },
+    { value: "wide-doorways", label: "Wide Doorways" },
+    { value: "roll-in-shower", label: "Roll-in Shower" },
+    { value: "grab-bars", label: "Grab Bars" },
+  ];
+
+  const storageOptions = [
+    { value: "climate-controlled", label: "Climate Controlled Storage" },
+    { value: "wine-storage", label: "Wine Storage" },
+    { value: "art-storage", label: "Art Storage" },
+    { value: "safe-room", label: "Safe Room/Vault" },
+    { value: "seasonal-storage", label: "Seasonal Storage" },
   ];
 
   const toggleOption = (field: string, value: string) => {
@@ -828,17 +914,145 @@ function FinalStep({ data, onChange }: StepProps) {
         </div>
       </div>
 
-      {/* Additional Notes */}
+      {/* View Priority Rooms */}
       <div className="space-y-3">
         <label className="block text-sm font-semibold text-gray-700">
-          Daily Routines & Additional Notes
+          Which rooms should prioritize views?
         </label>
+        <p className="text-sm text-gray-500">Select all that apply</p>
+        <div className="flex flex-wrap gap-2">
+          {viewPriorityOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => toggleOption("viewPriorityRooms", opt.value)}
+              className={`px-4 py-2 rounded-lg border transition-all ${
+                (data.viewPriorityRooms || []).includes(opt.value)
+                  ? "border-[#1a365d] bg-blue-50 text-[#1a365d]"
+                  : "border-gray-300 hover:border-gray-400"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Accessibility Requirements */}
+      <div className="space-y-3">
+        <label className="block text-sm font-semibold text-gray-700">Accessibility Requirements</label>
+        <div className="flex flex-wrap gap-2">
+          {accessibilityOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => toggleOption("accessibilityRequirements", opt.value)}
+              className={`px-4 py-2 rounded-lg border transition-all ${
+                (data.accessibilityRequirements || []).includes(opt.value)
+                  ? "border-[#1a365d] bg-blue-50 text-[#1a365d]"
+                  : "border-gray-300 hover:border-gray-400"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Storage Requirements */}
+      <div className="space-y-3">
+        <label className="block text-sm font-semibold text-gray-700">Special Storage Requirements</label>
+        <div className="flex flex-wrap gap-2">
+          {storageOptions.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => toggleOption("storageRequirements", opt.value)}
+              className={`px-4 py-2 rounded-lg border transition-all ${
+                (data.storageRequirements || []).includes(opt.value)
+                  ? "border-[#1a365d] bg-blue-50 text-[#1a365d]"
+                  : "border-gray-300 hover:border-gray-400"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Lot Size & Setback */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-3">
+          <label className="block text-sm font-semibold text-gray-700">
+            Minimum Lot Size (acres)
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={0.5}
+            value={data.minimumLotSize || ""}
+            onChange={(e) => onChange("minimumLotSize", parseFloat(e.target.value) || null)}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#1a365d] focus:ring-1 focus:ring-[#1a365d] outline-none"
+            placeholder="e.g., 2.5"
+          />
+        </div>
+        <div className="space-y-3">
+          <label className="block text-sm font-semibold text-gray-700">
+            Minimum Setback from Road (feet)
+          </label>
+          <input
+            type="number"
+            min={0}
+            value={data.minimumSetback || ""}
+            onChange={(e) => onChange("minimumSetback", parseInt(e.target.value) || null)}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#1a365d] focus:ring-1 focus:ring-[#1a365d] outline-none"
+            placeholder="e.g., 100"
+          />
+        </div>
+      </div>
+
+      {/* Current Space Pain Points */}
+      <div className="space-y-3">
+        <label className="block text-sm font-semibold text-gray-700">
+          Current Residence Pain Points
+        </label>
+        <p className="text-sm text-gray-500">
+          What aspects of your current home don't work for your lifestyle?
+        </p>
+        <textarea
+          value={data.currentSpacePainPoints || ""}
+          onChange={(e) => onChange("currentSpacePainPoints", e.target.value)}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#1a365d] focus:ring-1 focus:ring-[#1a365d] outline-none resize-none"
+          rows={3}
+          placeholder="Describe what you'd like to improve..."
+        />
+      </div>
+
+      {/* Daily Routines */}
+      <div className="space-y-3">
+        <label className="block text-sm font-semibold text-gray-700">
+          Daily Routines Summary
+        </label>
+        <p className="text-sm text-gray-500">
+          Describe a typical day and how you move through your home.
+        </p>
         <textarea
           value={data.dailyRoutinesSummary || ""}
           onChange={(e) => onChange("dailyRoutinesSummary", e.target.value)}
           className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#1a365d] focus:ring-1 focus:ring-[#1a365d] outline-none resize-none"
           rows={4}
-          placeholder="Describe your typical day, any specific adjacency requirements, current home pain points, or anything else we should know..."
+          placeholder="Walk us through your typical morning, afternoon, and evening..."
+        />
+      </div>
+
+      {/* Additional Notes */}
+      <div className="space-y-3">
+        <label className="block text-sm font-semibold text-gray-700">
+          Additional Notes
+        </label>
+        <textarea
+          value={data.additionalNotes || ""}
+          onChange={(e) => onChange("additionalNotes", e.target.value)}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:border-[#1a365d] focus:ring-1 focus:ring-[#1a365d] outline-none resize-none"
+          rows={3}
+          placeholder="Anything else we should know about your ideal living space..."
         />
       </div>
     </div>
