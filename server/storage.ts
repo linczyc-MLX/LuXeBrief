@@ -175,6 +175,7 @@ export class MySQLStorage implements IStorage {
     const result = await db.insert(sessions).values({
       clientName: insertSession.clientName,
       projectName: insertSession.projectName ?? null,
+      sessionType: insertSession.sessionType ?? 'lifestyle',
       accessToken,
       folderPath: insertSession.folderPath ?? null,
       status: insertSession.status || "in_progress",
