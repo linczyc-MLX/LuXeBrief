@@ -17,11 +17,43 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { type Session, type Report, type Response as BriefingResponse, type Question, categoryLabels } from "@shared/schema";
+import { type Session, type Report, type Response as BriefingResponse, type Question, type LivingResponse, categoryLabels } from "@shared/schema";
 
 interface SessionWithReportAndResponses extends Session {
   report: Report;
   responses: BriefingResponse[];
+  livingResponses?: LivingResponse[];
+}
+
+// Living step labels for display
+const livingStepLabels: Record<string, string> = {
+  work: "Work & Home Office",
+  hobbies: "Hobbies & Interests",
+  entertaining: "Entertaining",
+  wellness: "Wellness & Self-Care",
+  interior: "Interior Spaces",
+  exterior: "Exterior Amenities",
+  final: "Final Details",
+};
+
+// Helper to format Living response data for display
+function formatLivingValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (Array.isArray(value)) {
+    return value.map(v => String(v).replace(/-/g, " ")).join(", ");
+  }
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value).replace(/-/g, " ");
+}
+
+// Helper to format field names for display
+function formatFieldName(field: string): string {
+  return field
+    .replace(/([A-Z])/g, " $1")
+    .replace(/^./, str => str.toUpperCase())
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim();
 }
 
 const categoryIcons = {
@@ -132,7 +164,7 @@ export default function ReportPage() {
             </Button>
             <div>
               <p className="font-medium text-sm">{session.projectName || "LuXeBrief Project"}</p>
-              <p className="text-xs text-muted-foreground">{isLiving ? "Living Space Program" : "Lifestyle Brief"}</p>
+              <p className="text-xs text-muted-foreground">{isLiving ? "LuXeBrief Living" : "Lifestyle Brief"}</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -153,7 +185,7 @@ export default function ReportPage() {
             <CheckCircle2 className="w-8 h-8 text-green-600 dark:text-green-400" />
           </div>
           <h1 className="text-3xl md:text-4xl font-semibold tracking-tight mb-3">
-            {isLiving ? "Living Space Program" : "LuXeBrief Lifestyle"}
+            {isLiving ? "LuXeBrief Living" : "LuXeBrief Lifestyle"}
           </h1>
           <p className="text-lg text-muted-foreground max-w-lg mx-auto">
             {isLiving
@@ -178,100 +210,156 @@ export default function ReportPage() {
           </div>
         </div>
 
-        {/* Executive Summary - All Categories */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="w-5 h-5 text-primary" />
-              Executive Summary
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Vision Summary */}
-            <div>
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
-                <Sparkles className="w-4 h-4" />
-                Vision & Aspirations
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-summary">
-                {report.summary || "No vision summary available."}
-              </p>
-            </div>
+        {/* Living Session - Formatted Response Data */}
+        {isLiving && session.livingResponses && session.livingResponses.length > 0 ? (
+          <div className="space-y-6">
+            {session.livingResponses.map((resp) => {
+              let parsedData: Record<string, unknown> = {};
+              try {
+                parsedData = JSON.parse(resp.data);
+              } catch {
+                return null;
+              }
 
-            {/* Design Preferences */}
-            <div>
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
-                <Palette className="w-4 h-4" />
-                Design Preferences
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-design-preferences">
-                {report.designPreferences || "No design preferences recorded."}
-              </p>
-            </div>
+              // Filter out empty values
+              const entries = Object.entries(parsedData).filter(([_, value]) => {
+                if (value === null || value === undefined || value === "") return false;
+                if (Array.isArray(value) && value.length === 0) return false;
+                return true;
+              });
 
-            {/* Functional Requirements */}
-            <div>
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
-                <Layout className="w-4 h-4" />
-                Functional Requirements
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-functional-needs">
-                {report.functionalNeeds || "No functional requirements recorded."}
-              </p>
-            </div>
+              if (entries.length === 0) return null;
 
-            {/* Lifestyle Elements */}
-            <div>
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
-                <Heart className="w-4 h-4" />
-                Lifestyle Elements
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-lifestyle-elements">
-                {report.lifestyleElements || "No lifestyle elements recorded."}
-              </p>
-            </div>
-
-            {/* Additional Notes */}
-            <div>
-              <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
-                <MessageSquare className="w-4 h-4" />
-                Additional Notes
-              </h3>
-              <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-additional-notes">
-                {report.additionalNotes || "No additional notes recorded."}
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Separator className="my-8" />
-
-        {/* Full Responses by Category */}
-        <div className="space-y-8">
-          <h2 className="text-xl font-semibold">Complete Responses</h2>
-          
-          {(Object.entries(responsesByCategory) as [keyof typeof categoryLabels, typeof responsesByCategory[string]][]).map(([category, items]) => {
-            const Icon = categoryIcons[category];
-            return (
-              <div key={category} className="space-y-4">
-                <h3 className="flex items-center gap-2 text-lg font-medium text-primary">
-                  <Icon className="w-5 h-5" />
-                  {categoryLabels[category]}
-                </h3>
-                <div className="space-y-4 pl-7">
-                  {items.map(({ question, response }) => (
-                    <div key={question.id} className="space-y-2">
-                      <p className="text-sm font-medium">{question.question}</p>
-                      <p className="text-sm text-muted-foreground leading-relaxed">
-                        {response?.transcription || <span className="italic">No response recorded</span>}
-                      </p>
+              return (
+                <Card key={resp.stepId} className="mb-4">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      <Layout className="w-5 h-5 text-primary" />
+                      {livingStepLabels[resp.stepId] || resp.stepId}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-3">
+                      {entries.map(([key, value]) => (
+                        <div key={key} className="flex flex-col sm:flex-row sm:gap-2">
+                          <span className="text-sm font-medium text-foreground min-w-[180px]">
+                            {formatFieldName(key)}:
+                          </span>
+                          <span className="text-sm text-muted-foreground capitalize">
+                            {formatLivingValue(value)}
+                          </span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        ) : !isLiving ? (
+          <>
+            {/* Lifestyle Session - Executive Summary */}
+            <Card className="mb-8">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="w-5 h-5 text-primary" />
+                  Executive Summary
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Vision Summary */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                    <Sparkles className="w-4 h-4" />
+                    Vision & Aspirations
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-summary">
+                    {report.summary || "No vision summary available."}
+                  </p>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+
+                {/* Design Preferences */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                    <Palette className="w-4 h-4" />
+                    Design Preferences
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-design-preferences">
+                    {report.designPreferences || "No design preferences recorded."}
+                  </p>
+                </div>
+
+                {/* Functional Requirements */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                    <Layout className="w-4 h-4" />
+                    Functional Requirements
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-functional-needs">
+                    {report.functionalNeeds || "No functional requirements recorded."}
+                  </p>
+                </div>
+
+                {/* Lifestyle Elements */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                    <Heart className="w-4 h-4" />
+                    Lifestyle Elements
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-lifestyle-elements">
+                    {report.lifestyleElements || "No lifestyle elements recorded."}
+                  </p>
+                </div>
+
+                {/* Additional Notes */}
+                <div>
+                  <h3 className="flex items-center gap-2 text-sm font-semibold text-primary mb-2">
+                    <MessageSquare className="w-4 h-4" />
+                    Additional Notes
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap" data-testid="text-additional-notes">
+                    {report.additionalNotes || "No additional notes recorded."}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Separator className="my-8" />
+
+            {/* Full Responses by Category */}
+            <div className="space-y-8">
+              <h2 className="text-xl font-semibold">Complete Responses</h2>
+
+              {(Object.entries(responsesByCategory) as [keyof typeof categoryLabels, typeof responsesByCategory[string]][]).map(([category, items]) => {
+                const Icon = categoryIcons[category];
+                return (
+                  <div key={category} className="space-y-4">
+                    <h3 className="flex items-center gap-2 text-lg font-medium text-primary">
+                      <Icon className="w-5 h-5" />
+                      {categoryLabels[category]}
+                    </h3>
+                    <div className="space-y-4 pl-7">
+                      {items.map(({ question, response }) => (
+                        <div key={question.id} className="space-y-2">
+                          <p className="text-sm font-medium">{question.question}</p>
+                          <p className="text-sm text-muted-foreground leading-relaxed">
+                            {response?.transcription || <span className="italic">No response recorded</span>}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        ) : (
+          <Card className="mb-8">
+            <CardContent className="py-8 text-center text-muted-foreground">
+              No response data available.
+            </CardContent>
+          </Card>
+        )}
 
         {/* Footer Actions */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-12 pt-8 border-t border-border">

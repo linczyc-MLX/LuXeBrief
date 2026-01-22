@@ -252,11 +252,12 @@ export async function registerRoutes(
       if (!session) {
         return res.status(404).json({ error: "Session not found" });
       }
-      
+
       const responses = await storage.getResponsesBySession(id);
+      const livingResponses = await storage.getLivingResponsesBySession(id);
       const report = await storage.getReport(id);
-      
-      res.json({ ...session, responses, report });
+
+      res.json({ ...session, responses, livingResponses, report });
     } catch (error) {
       console.error("Error fetching session report:", error);
       res.status(500).json({ error: "Failed to fetch session report" });
