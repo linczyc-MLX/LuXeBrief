@@ -2,12 +2,13 @@ import type { Express, Request, Response as ExpressResponse, NextFunction } from
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage } from "./storage";
-import { categoryLabels, type Question, type Session, type Response as DBResponse, type LivingResponse, insertQuestionSchema, livingSteps } from "@shared/schema";
+import { categoryLabels, type Question, type Session, type Response as DBResponse, type LivingResponse, insertQuestionSchema, livingSteps, type TasteSelection, type TasteProfile, tasteCategories, TASTE_SELECTION_WEIGHTS, type TasteProfileResult } from "@shared/schema";
+import { tasteQuads, getTasteQuadCount } from "@shared/tasteQuads";
 import OpenAI, { toFile } from "openai";
 import PDFDocument from "pdfkit";
 import { Buffer, File } from "node:buffer";
 import { CloudStorageService } from "./cloudStorage";
-import { sendLuXeBriefInvitation, verifySmtpConnection } from "./email";
+import { sendLuXeBriefInvitation, sendTasteExplorationInvitation, verifySmtpConnection } from "./email";
 
 // Generate secure access token for session URLs
 function generateAccessToken(): string {
@@ -121,7 +122,7 @@ export async function registerRoutes(
       const accessToken = generateAccessToken();
 
       // Validate sessionType if provided
-      const validSessionType = sessionType === 'living' ? 'living' : 'lifestyle';
+      const validSessionType = sessionType === 'living' ? 'living' : sessionType === 'taste' ? 'taste' : 'lifestyle';
 
       // Create session with N4S integration fields
       const session = await storage.createSession({
@@ -144,12 +145,19 @@ export async function registerRoutes(
       // Update session with folder path
       const updatedSession = await storage.updateSession(session.id, { folderPath });
 
-      // Build the invitation URL - use /living/ for living sessions, /briefing/ for lifestyle
+      // Build the invitation URL - use appropriate route based on session type
       const baseUrl = subdomain
         ? `https://${subdomain}.luxebrief.not-4.sale`
         : `https://luxebrief.not-4.sale`;
-      const sessionRoute = validSessionType === 'living' ? 'living' : 'briefing';
-      const invitationUrl = `${baseUrl}/${sessionRoute}/${session.id}?token=${accessToken}`;
+      let sessionRoute: string;
+      let invitationUrl: string;
+      if (validSessionType === 'taste') {
+        sessionRoute = 'taste';
+        invitationUrl = `${baseUrl}/${sessionRoute}/${accessToken}`; // Taste uses token directly in URL
+      } else {
+        sessionRoute = validSessionType === 'living' ? 'living' : 'briefing';
+        invitationUrl = `${baseUrl}/${sessionRoute}/${session.id}?token=${accessToken}`;
+      }
 
       console.log(`[N4S] Created ${validSessionType} session ${session.id} for ${clientName} (${principalType})`);
       console.log(`[N4S] Invitation URL: ${invitationUrl}`);
@@ -157,14 +165,25 @@ export async function registerRoutes(
       // Send email invitation
       let emailSent = false;
       try {
-        emailSent = await sendLuXeBriefInvitation({
-          clientName,
-          clientEmail,
-          projectName: projectName || "Luxury Residence Project",
-          invitationUrl,
-          principalType: principalType as "principal" | "secondary",
-          sessionType: validSessionType,
-        });
+        if (validSessionType === 'taste') {
+          // Use dedicated Taste Exploration email template
+          emailSent = await sendTasteExplorationInvitation({
+            clientName,
+            clientEmail,
+            projectName: projectName || "Luxury Residence Project",
+            invitationUrl,
+            principalType: principalType as "principal" | "secondary",
+          });
+        } else {
+          emailSent = await sendLuXeBriefInvitation({
+            clientName,
+            clientEmail,
+            projectName: projectName || "Luxury Residence Project",
+            invitationUrl,
+            principalType: principalType as "principal" | "secondary",
+            sessionType: validSessionType,
+          });
+        }
       } catch (emailError) {
         console.error("[N4S] Email sending failed:", emailError);
       }
@@ -956,7 +975,250 @@ ${responseContext}`
     }
   });
 
+  // ===== TASTE EXPLORATION ROUTES =====
+
+  // Get taste session by access token (for client questionnaire)
+  app.get("/api/taste/session/:token", async (req: Request, res: ExpressResponse) => {
+    try {
+      const { token } = req.params;
+      const session = await storage.getSessionByToken(token);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      if (session.sessionType !== "taste") {
+        return res.status(400).json({ error: "Invalid session type" });
+      }
+
+      // Include taste selections
+      const selections = await storage.getTasteSelectionsBySession(session.id);
+      const profile = await storage.getTasteProfile(session.id);
+
+      res.json({ ...session, selections, profile });
+    } catch (error) {
+      console.error("[Taste] Error fetching session:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Save a taste selection
+  app.post("/api/taste/sessions/:id/selection", async (req: Request, res: ExpressResponse) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const { quadId, favorite1, favorite2, leastFavorite, isSkipped } = req.body;
+
+      if (!quadId) {
+        return res.status(400).json({ error: "quadId is required" });
+      }
+
+      const selection = await storage.createOrUpdateTasteSelection(sessionId, quadId, {
+        favorite1: isSkipped ? null : favorite1,
+        favorite2: isSkipped ? null : favorite2,
+        leastFavorite: isSkipped ? null : leastFavorite,
+        isSkipped: isSkipped || false,
+      });
+
+      res.json(selection);
+    } catch (error) {
+      console.error("[Taste] Error saving selection:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Complete taste session
+  app.post("/api/taste/sessions/:id/complete", async (req: Request, res: ExpressResponse) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getSession(sessionId);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Get all selections
+      const selections = await storage.getTasteSelectionsBySession(sessionId);
+
+      // Calculate profile
+      const profileResult = calculateTasteProfile(selections);
+
+      // Save profile
+      const profile = await storage.createOrUpdateTasteProfile(sessionId, {
+        warmthScore: Math.round(profileResult.scores.warmth * 10),
+        formalityScore: Math.round(profileResult.scores.formality * 10),
+        dramaScore: Math.round(profileResult.scores.drama * 10),
+        traditionScore: Math.round(profileResult.scores.tradition * 10),
+        opennessScore: Math.round(profileResult.scores.openness * 10),
+        artFocusScore: Math.round(profileResult.scores.art_focus * 10),
+        completedQuads: profileResult.completedQuads,
+        skippedQuads: profileResult.skippedQuads,
+        totalQuads: profileResult.totalQuads,
+        topMaterials: JSON.stringify(profileResult.topMaterials),
+      });
+
+      // Mark session as complete
+      await storage.updateSession(sessionId, {
+        status: "completed",
+        completedAt: new Date(),
+      });
+
+      const completedSession = await storage.getSession(sessionId);
+      res.json({
+        session: completedSession,
+        profile,
+        profileResult,
+      });
+    } catch (error) {
+      console.error("[Taste] Error completing session:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get taste profile (for N4S integration)
+  app.get("/api/taste/sessions/:id/profile", adminAuth, async (req: Request, res: ExpressResponse) => {
+    try {
+      const sessionId = parseInt(req.params.id);
+      const session = await storage.getSession(sessionId);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      const profile = await storage.getTasteProfile(sessionId);
+      const selections = await storage.getTasteSelectionsBySession(sessionId);
+
+      // Format selections for N4S
+      const formattedSelections: Record<string, { favorites: number[]; least: number | null }> = {};
+      selections.forEach((sel) => {
+        if (!sel.isSkipped && sel.favorite1 !== null && sel.favorite2 !== null) {
+          formattedSelections[sel.quadId] = {
+            favorites: [sel.favorite1, sel.favorite2],
+            least: sel.leastFavorite,
+          };
+        }
+      });
+
+      res.json({
+        session: {
+          clientId: session.n4sPrincipalType === "principal"
+            ? `${session.subdomain || 'unknown'}-P`
+            : `${session.subdomain || 'unknown'}-S`,
+          completedAt: session.completedAt,
+        },
+        selections: formattedSelections,
+        profile: profile ? {
+          scores: {
+            warmth: (profile.warmthScore || 50) / 10,
+            formality: (profile.formalityScore || 50) / 10,
+            drama: (profile.dramaScore || 50) / 10,
+            tradition: (profile.traditionScore || 50) / 10,
+            openness: (profile.opennessScore || 50) / 10,
+            art_focus: (profile.artFocusScore || 50) / 10,
+          },
+          topMaterials: profile.topMaterials ? JSON.parse(profile.topMaterials) : [],
+          completedQuads: profile.completedQuads,
+          skippedQuads: profile.skippedQuads,
+          totalQuads: profile.totalQuads,
+        } : null,
+      });
+    } catch (error) {
+      console.error("[Taste] Error fetching profile:", error);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Get taste quads data (for client)
+  app.get("/api/taste/quads", async (req: Request, res: ExpressResponse) => {
+    res.json({
+      quads: tasteQuads,
+      categories: tasteCategories,
+      totalCount: getTasteQuadCount(),
+    });
+  });
+
   return httpServer;
+}
+
+// Calculate taste profile from selections
+function calculateTasteProfile(selections: TasteSelection[]): TasteProfileResult {
+  const scores: Record<string, number> = {
+    warmth: 0,
+    formality: 0,
+    drama: 0,
+    tradition: 0,
+    openness: 0,
+    art_focus: 0,
+  };
+
+  let totalWeight = 0;
+  let completedQuads = 0;
+  let skippedQuads = 0;
+
+  for (const selection of selections) {
+    if (selection.isSkipped) {
+      skippedQuads++;
+      continue;
+    }
+
+    const quad = tasteQuads.find((q) => q.quadId === selection.quadId);
+    if (!quad || !quad.attributes) {
+      continue;
+    }
+
+    completedQuads++;
+
+    // Process favorite 1
+    if (selection.favorite1 !== null && selection.favorite1 !== undefined) {
+      const idx = selection.favorite1;
+      totalWeight += Math.abs(TASTE_SELECTION_WEIGHTS.FAVORITE_1);
+
+      for (const [attr, values] of Object.entries(quad.attributes)) {
+        if (Array.isArray(values) && values[idx] !== undefined && scores[attr] !== undefined) {
+          scores[attr] += values[idx] * TASTE_SELECTION_WEIGHTS.FAVORITE_1;
+        }
+      }
+    }
+
+    // Process favorite 2
+    if (selection.favorite2 !== null && selection.favorite2 !== undefined) {
+      const idx = selection.favorite2;
+      totalWeight += Math.abs(TASTE_SELECTION_WEIGHTS.FAVORITE_2);
+
+      for (const [attr, values] of Object.entries(quad.attributes)) {
+        if (Array.isArray(values) && values[idx] !== undefined && scores[attr] !== undefined) {
+          scores[attr] += values[idx] * TASTE_SELECTION_WEIGHTS.FAVORITE_2;
+        }
+      }
+    }
+
+    // Process least favorite
+    if (selection.leastFavorite !== null && selection.leastFavorite !== undefined) {
+      const idx = selection.leastFavorite;
+      totalWeight += Math.abs(TASTE_SELECTION_WEIGHTS.LEAST);
+
+      for (const [attr, values] of Object.entries(quad.attributes)) {
+        if (Array.isArray(values) && values[idx] !== undefined && scores[attr] !== undefined) {
+          scores[attr] += values[idx] * TASTE_SELECTION_WEIGHTS.LEAST;
+        }
+      }
+    }
+  }
+
+  // Normalize scores to 1-10 scale
+  const normalizedScores: Record<string, number> = {};
+  for (const attr of ['warmth', 'formality', 'drama', 'tradition', 'openness', 'art_focus']) {
+    normalizedScores[attr] = totalWeight > 0
+      ? Math.min(10, Math.max(1, Math.round((scores[attr] / totalWeight + 5) * 10) / 10))
+      : 5;
+  }
+
+  return {
+    scores: normalizedScores as TasteProfileResult['scores'],
+    topMaterials: [],
+    completedQuads,
+    skippedQuads,
+    totalQuads: tasteQuads.length,
+  };
 }
 
 // N4S Brand Colors

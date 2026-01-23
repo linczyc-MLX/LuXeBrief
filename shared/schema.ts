@@ -39,10 +39,11 @@ export const sessions = mysqlTable("sessions", {
 });
 
 // Session type constants
-export type SessionType = "lifestyle" | "living";
+export type SessionType = "lifestyle" | "living" | "taste";
 export const SESSION_TYPES = {
   LIFESTYLE: "lifestyle" as const, // Audio-based questionnaire
   LIVING: "living" as const,       // Form-based questionnaire
+  TASTE: "taste" as const,         // Visual preference questionnaire
 };
 
 export const insertSessionSchema = createInsertSchema(sessions).omit({
@@ -408,4 +409,120 @@ export interface LivingStepData {
     currentSpacePainPoints?: string;
     dailyRoutinesSummary?: string;
   };
+}
+
+// ===== Taste Exploration: Visual preference questionnaire =====
+
+// Taste selections table (stores selections per quad)
+export const tasteSelections = mysqlTable("taste_selections", {
+  id: int("id").primaryKey().autoincrement(),
+  sessionId: int("session_id").notNull(),
+  quadId: varchar("quad_id", { length: 20 }).notNull(), // e.g., 'LS-001'
+  favorite1: int("favorite_1"), // Index 0-3 of first favorite
+  favorite2: int("favorite_2"), // Index 0-3 of second favorite
+  leastFavorite: int("least_favorite"), // Index 0-3 of least favorite
+  isSkipped: boolean("is_skipped").notNull().default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertTasteSelectionSchema = createInsertSchema(tasteSelections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type TasteSelection = typeof tasteSelections.$inferSelect;
+export type InsertTasteSelection = z.infer<typeof insertTasteSelectionSchema>;
+
+// Taste profiles table (computed results)
+export const tasteProfiles = mysqlTable("taste_profiles", {
+  id: int("id").primaryKey().autoincrement(),
+  sessionId: int("session_id").notNull().unique(),
+  // Design axis scores (stored as integers, 1-100 scale for precision)
+  warmthScore: int("warmth_score"), // 1=Cool, 100=Warm
+  formalityScore: int("formality_score"), // 1=Casual, 100=Formal
+  dramaScore: int("drama_score"), // 1=Subtle, 100=Dramatic
+  traditionScore: int("tradition_score"), // 1=Contemporary, 100=Traditional
+  opennessScore: int("openness_score"), // 1=Closed, 100=Open
+  artFocusScore: int("art_focus_score"), // 1=Minimal, 100=Art-Centric
+  // Statistics
+  completedQuads: int("completed_quads").notNull().default(0),
+  skippedQuads: int("skipped_quads").notNull().default(0),
+  totalQuads: int("total_quads").notNull().default(36),
+  // Material preferences (JSON array)
+  topMaterials: text("top_materials"), // JSON array of material names
+  // Timestamps
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`).notNull(),
+});
+
+export const insertTasteProfileSchema = createInsertSchema(tasteProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type TasteProfile = typeof tasteProfiles.$inferSelect;
+export type InsertTasteProfile = z.infer<typeof insertTasteProfileSchema>;
+
+// Taste Exploration quad definitions
+export interface TasteQuad {
+  quadId: string;
+  category: string;
+  images: string[];
+  attributes: {
+    warmth: number[];
+    formality: number[];
+    drama: number[];
+    tradition: number[];
+  };
+}
+
+export interface TasteCategory {
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+}
+
+export const tasteCategories: Record<string, TasteCategory> = {
+  living_spaces: { code: 'LS', name: 'Living Spaces', description: 'Main living rooms, great rooms, salons, and formal sitting areas', icon: '🛋️', color: '#1A365D' },
+  dining_spaces: { code: 'DS', name: 'Dining Spaces', description: 'Formal dining, breakfast areas, and casual eating spaces', icon: '🍽️', color: '#805AD5' },
+  kitchens: { code: 'KT', name: 'Kitchens', description: "Chef's kitchens, family kitchens, and culinary spaces", icon: '👨‍🍳', color: '#C9A962' },
+  primary_bedrooms: { code: 'PB', name: 'Primary Bedrooms', description: 'Master suites and primary sleeping quarters', icon: '🛏️', color: '#9F7AEA' },
+  primary_bathrooms: { code: 'PBT', name: 'Primary Bathrooms', description: 'Master baths and spa-like retreats', icon: '🛁', color: '#38B2AC' },
+  guest_bedrooms: { code: 'GB', name: 'Guest Bedrooms', description: 'Guest suites and secondary sleeping quarters', icon: '🛏️', color: '#667EEA' },
+  family_areas: { code: 'FA', name: 'Family Areas', description: 'Casual family rooms, media rooms, and recreational spaces', icon: '👨‍👩‍👧‍👦', color: '#ED8936' },
+  exterior_architecture: { code: 'EA', name: 'Exterior Architecture', description: 'Facades, entries, and overall architectural presence', icon: '🏛️', color: '#319795' },
+  outdoor_living: { code: 'OL', name: 'Outdoor Living', description: 'Pools, terraces, gardens, and exterior entertainment', icon: '🌳', color: '#48BB78' }
+};
+
+export const tasteCategoryOrder = [
+  'living_spaces', 'dining_spaces', 'kitchens', 'primary_bedrooms', 'primary_bathrooms',
+  'guest_bedrooms', 'family_areas', 'exterior_architecture', 'outdoor_living'
+];
+
+// Selection weights for profile calculation
+export const TASTE_SELECTION_WEIGHTS = {
+  FAVORITE_1: 4.0,
+  FAVORITE_2: 2.5,
+  LEAST: -2.0
+};
+
+// Taste profile result interface
+export interface TasteProfileResult {
+  scores: {
+    warmth: number;
+    formality: number;
+    drama: number;
+    tradition: number;
+    openness: number;
+    art_focus: number;
+  };
+  topMaterials: string[];
+  completedQuads: number;
+  skippedQuads: number;
+  totalQuads: number;
 }

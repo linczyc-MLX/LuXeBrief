@@ -8,6 +8,8 @@ import NotFound from "@/pages/not-found";
 import HomePage from "@/pages/home";
 import BriefingPage from "@/pages/briefing";
 import LivingPage from "@/pages/living";
+import TastePage from "@/pages/taste";
+import TasteResultsPage from "@/pages/taste-results";
 import ReportPage from "@/pages/report";
 import AdminPage from "@/pages/admin";
 
@@ -17,6 +19,8 @@ function Router() {
       <Route path="/" component={HomePage} />
       <Route path="/briefing/:id" component={BriefingPage} />
       <Route path="/living/:id" component={LivingPage} />
+      <Route path="/taste/:token" component={TastePage} />
+      <Route path="/taste/:token/results" component={TasteResultsPage} />
       <Route path="/report/:id" component={ReportPage} />
       <Route path="/admin" component={AdminPage} />
       <Route component={NotFound} />

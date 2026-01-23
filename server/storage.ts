@@ -13,6 +13,10 @@ import {
   type InsertSiteContent,
   type LivingResponse,
   type InsertLivingResponse,
+  type TasteSelection,
+  type InsertTasteSelection,
+  type TasteProfile,
+  type InsertTasteProfile,
   defaultQuestions,
   defaultSiteContent,
   users,
@@ -21,7 +25,9 @@ import {
   reports,
   questions,
   siteContent,
-  livingResponses
+  livingResponses,
+  tasteSelections,
+  tasteProfiles
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { eq, and, asc } from "drizzle-orm";
@@ -65,6 +71,16 @@ export interface IStorage {
   getAllContent(): Promise<SiteContent[]>;
   getContent(key: string): Promise<SiteContent | undefined>;
   updateContent(key: string, value: string): Promise<SiteContent | undefined>;
+
+  // Taste Selections (visual preference questionnaire)
+  getSessionByToken(token: string): Promise<Session | undefined>;
+  getTasteSelectionsBySession(sessionId: number): Promise<TasteSelection[]>;
+  getTasteSelection(sessionId: number, quadId: string): Promise<TasteSelection | undefined>;
+  createOrUpdateTasteSelection(sessionId: number, quadId: string, data: Partial<InsertTasteSelection>): Promise<TasteSelection>;
+
+  // Taste Profiles
+  getTasteProfile(sessionId: number): Promise<TasteProfile | undefined>;
+  createOrUpdateTasteProfile(sessionId: number, data: Partial<InsertTasteProfile>): Promise<TasteProfile>;
 
   // Initialize
   initialize(): Promise<void>;
@@ -417,6 +433,109 @@ export class MySQLStorage implements IStorage {
 
     return this.getContent(key);
   }
+
+  // Taste Selections (visual preference questionnaire)
+  async getSessionByToken(token: string): Promise<Session | undefined> {
+    const db = await this.getDb();
+    const result = await db.select().from(sessions).where(eq(sessions.accessToken, token)).limit(1);
+    return result[0];
+  }
+
+  async getTasteSelectionsBySession(sessionId: number): Promise<TasteSelection[]> {
+    const db = await this.getDb();
+    return db.select().from(tasteSelections).where(eq(tasteSelections.sessionId, sessionId));
+  }
+
+  async getTasteSelection(sessionId: number, quadId: string): Promise<TasteSelection | undefined> {
+    const db = await this.getDb();
+    const result = await db.select().from(tasteSelections)
+      .where(and(eq(tasteSelections.sessionId, sessionId), eq(tasteSelections.quadId, quadId)))
+      .limit(1);
+    return result[0];
+  }
+
+  async createOrUpdateTasteSelection(
+    sessionId: number,
+    quadId: string,
+    data: Partial<InsertTasteSelection>
+  ): Promise<TasteSelection> {
+    const db = await this.getDb();
+    const existing = await this.getTasteSelection(sessionId, quadId);
+
+    if (existing) {
+      await db.update(tasteSelections).set({
+        favorite1: data.favorite1 !== undefined ? data.favorite1 : existing.favorite1,
+        favorite2: data.favorite2 !== undefined ? data.favorite2 : existing.favorite2,
+        leastFavorite: data.leastFavorite !== undefined ? data.leastFavorite : existing.leastFavorite,
+        isSkipped: data.isSkipped !== undefined ? data.isSkipped : existing.isSkipped,
+      }).where(eq(tasteSelections.id, existing.id));
+
+      return (await this.getTasteSelection(sessionId, quadId))!;
+    }
+
+    const result = await db.insert(tasteSelections).values({
+      sessionId,
+      quadId,
+      favorite1: data.favorite1 ?? null,
+      favorite2: data.favorite2 ?? null,
+      leastFavorite: data.leastFavorite ?? null,
+      isSkipped: data.isSkipped ?? false,
+    });
+
+    const insertId = result[0].insertId;
+    const selection = await db.select().from(tasteSelections).where(eq(tasteSelections.id, insertId)).limit(1);
+    return selection[0]!;
+  }
+
+  // Taste Profiles
+  async getTasteProfile(sessionId: number): Promise<TasteProfile | undefined> {
+    const db = await this.getDb();
+    const result = await db.select().from(tasteProfiles).where(eq(tasteProfiles.sessionId, sessionId)).limit(1);
+    return result[0];
+  }
+
+  async createOrUpdateTasteProfile(
+    sessionId: number,
+    data: Partial<InsertTasteProfile>
+  ): Promise<TasteProfile> {
+    const db = await this.getDb();
+    const existing = await this.getTasteProfile(sessionId);
+
+    if (existing) {
+      await db.update(tasteProfiles).set({
+        warmthScore: data.warmthScore !== undefined ? data.warmthScore : existing.warmthScore,
+        formalityScore: data.formalityScore !== undefined ? data.formalityScore : existing.formalityScore,
+        dramaScore: data.dramaScore !== undefined ? data.dramaScore : existing.dramaScore,
+        traditionScore: data.traditionScore !== undefined ? data.traditionScore : existing.traditionScore,
+        opennessScore: data.opennessScore !== undefined ? data.opennessScore : existing.opennessScore,
+        artFocusScore: data.artFocusScore !== undefined ? data.artFocusScore : existing.artFocusScore,
+        completedQuads: data.completedQuads !== undefined ? data.completedQuads : existing.completedQuads,
+        skippedQuads: data.skippedQuads !== undefined ? data.skippedQuads : existing.skippedQuads,
+        totalQuads: data.totalQuads !== undefined ? data.totalQuads : existing.totalQuads,
+        topMaterials: data.topMaterials !== undefined ? data.topMaterials : existing.topMaterials,
+      }).where(eq(tasteProfiles.id, existing.id));
+
+      return (await this.getTasteProfile(sessionId))!;
+    }
+
+    const result = await db.insert(tasteProfiles).values({
+      sessionId,
+      warmthScore: data.warmthScore ?? null,
+      formalityScore: data.formalityScore ?? null,
+      dramaScore: data.dramaScore ?? null,
+      traditionScore: data.traditionScore ?? null,
+      opennessScore: data.opennessScore ?? null,
+      artFocusScore: data.artFocusScore ?? null,
+      completedQuads: data.completedQuads ?? 0,
+      skippedQuads: data.skippedQuads ?? 0,
+      totalQuads: data.totalQuads ?? 36,
+      topMaterials: data.topMaterials ?? null,
+    });
+
+    const insertId = result[0].insertId;
+    const profile = await db.select().from(tasteProfiles).where(eq(tasteProfiles.id, insertId)).limit(1);
+    return profile[0]!;
+  }
 }
 
 // In-Memory Storage (fallback)
@@ -425,12 +544,16 @@ export class MemStorage implements IStorage {
   private sessions: Map<number, Session>;
   private responses: Map<string, Response>;
   private livingResponses: Map<string, LivingResponse>;
+  private tasteSelectionsMap: Map<string, TasteSelection>;
+  private tasteProfilesMap: Map<number, TasteProfile>;
   private reports: Map<number, Report>;
   private questions: Map<number, Question>;
   private content: Map<string, SiteContent>;
   private nextSessionId: number;
   private nextResponseId: number;
   private nextLivingResponseId: number;
+  private nextTasteSelectionId: number;
+  private nextTasteProfileId: number;
   private nextReportId: number;
   private nextQuestionId: number;
   private nextContentId: number;
@@ -440,12 +563,16 @@ export class MemStorage implements IStorage {
     this.sessions = new Map();
     this.responses = new Map();
     this.livingResponses = new Map();
+    this.tasteSelectionsMap = new Map();
+    this.tasteProfilesMap = new Map();
     this.reports = new Map();
     this.questions = new Map();
     this.content = new Map();
     this.nextSessionId = 1;
     this.nextResponseId = 1;
     this.nextLivingResponseId = 1;
+    this.nextTasteSelectionId = 1;
+    this.nextTasteProfileId = 1;
     this.nextReportId = 1;
     this.nextQuestionId = 1;
     this.nextContentId = 1;
@@ -721,6 +848,105 @@ export class MemStorage implements IStorage {
     this.content.set(key, updated);
     return updated;
   }
+
+  // Taste Selections (visual preference questionnaire)
+  async getSessionByToken(token: string): Promise<Session | undefined> {
+    return Array.from(this.sessions.values()).find(s => s.accessToken === token);
+  }
+
+  async getTasteSelectionsBySession(sessionId: number): Promise<TasteSelection[]> {
+    return Array.from(this.tasteSelectionsMap.values()).filter(s => s.sessionId === sessionId);
+  }
+
+  async getTasteSelection(sessionId: number, quadId: string): Promise<TasteSelection | undefined> {
+    return this.tasteSelectionsMap.get(`${sessionId}-${quadId}`);
+  }
+
+  async createOrUpdateTasteSelection(
+    sessionId: number,
+    quadId: string,
+    data: Partial<InsertTasteSelection>
+  ): Promise<TasteSelection> {
+    const key = `${sessionId}-${quadId}`;
+    const existing = this.tasteSelectionsMap.get(key);
+
+    if (existing) {
+      const updated: TasteSelection = {
+        ...existing,
+        favorite1: data.favorite1 !== undefined ? data.favorite1 : existing.favorite1,
+        favorite2: data.favorite2 !== undefined ? data.favorite2 : existing.favorite2,
+        leastFavorite: data.leastFavorite !== undefined ? data.leastFavorite : existing.leastFavorite,
+        isSkipped: data.isSkipped !== undefined ? data.isSkipped : existing.isSkipped,
+        updatedAt: new Date(),
+      };
+      this.tasteSelectionsMap.set(key, updated);
+      return updated;
+    }
+
+    const selection: TasteSelection = {
+      id: this.nextTasteSelectionId++,
+      sessionId,
+      quadId,
+      favorite1: data.favorite1 ?? null,
+      favorite2: data.favorite2 ?? null,
+      leastFavorite: data.leastFavorite ?? null,
+      isSkipped: data.isSkipped ?? false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.tasteSelectionsMap.set(key, selection);
+    return selection;
+  }
+
+  // Taste Profiles
+  async getTasteProfile(sessionId: number): Promise<TasteProfile | undefined> {
+    return this.tasteProfilesMap.get(sessionId);
+  }
+
+  async createOrUpdateTasteProfile(
+    sessionId: number,
+    data: Partial<InsertTasteProfile>
+  ): Promise<TasteProfile> {
+    const existing = this.tasteProfilesMap.get(sessionId);
+
+    if (existing) {
+      const updated: TasteProfile = {
+        ...existing,
+        warmthScore: data.warmthScore !== undefined ? data.warmthScore : existing.warmthScore,
+        formalityScore: data.formalityScore !== undefined ? data.formalityScore : existing.formalityScore,
+        dramaScore: data.dramaScore !== undefined ? data.dramaScore : existing.dramaScore,
+        traditionScore: data.traditionScore !== undefined ? data.traditionScore : existing.traditionScore,
+        opennessScore: data.opennessScore !== undefined ? data.opennessScore : existing.opennessScore,
+        artFocusScore: data.artFocusScore !== undefined ? data.artFocusScore : existing.artFocusScore,
+        completedQuads: data.completedQuads !== undefined ? data.completedQuads : existing.completedQuads,
+        skippedQuads: data.skippedQuads !== undefined ? data.skippedQuads : existing.skippedQuads,
+        totalQuads: data.totalQuads !== undefined ? data.totalQuads : existing.totalQuads,
+        topMaterials: data.topMaterials !== undefined ? data.topMaterials : existing.topMaterials,
+        updatedAt: new Date(),
+      };
+      this.tasteProfilesMap.set(sessionId, updated);
+      return updated;
+    }
+
+    const profile: TasteProfile = {
+      id: this.nextTasteProfileId++,
+      sessionId,
+      warmthScore: data.warmthScore ?? null,
+      formalityScore: data.formalityScore ?? null,
+      dramaScore: data.dramaScore ?? null,
+      traditionScore: data.traditionScore ?? null,
+      opennessScore: data.opennessScore ?? null,
+      artFocusScore: data.artFocusScore ?? null,
+      completedQuads: data.completedQuads ?? 0,
+      skippedQuads: data.skippedQuads ?? 0,
+      totalQuads: data.totalQuads ?? 36,
+      topMaterials: data.topMaterials ?? null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    this.tasteProfilesMap.set(sessionId, profile);
+    return profile;
+  }
 }
 
 // Storage factory - tries MySQL first, falls back to MemStorage
@@ -802,6 +1028,14 @@ class StorageProxy implements IStorage {
   getAllContent() { return getStorage().then(s => s.getAllContent()); }
   getContent(key: string) { return getStorage().then(s => s.getContent(key)); }
   updateContent(key: string, value: string) { return getStorage().then(s => s.updateContent(key, value)); }
+
+  // Taste methods
+  getSessionByToken(token: string) { return getStorage().then(s => s.getSessionByToken(token)); }
+  getTasteSelectionsBySession(sessionId: number) { return getStorage().then(s => s.getTasteSelectionsBySession(sessionId)); }
+  getTasteSelection(sessionId: number, quadId: string) { return getStorage().then(s => s.getTasteSelection(sessionId, quadId)); }
+  createOrUpdateTasteSelection(sessionId: number, quadId: string, data: Partial<InsertTasteSelection>) { return getStorage().then(s => s.createOrUpdateTasteSelection(sessionId, quadId, data)); }
+  getTasteProfile(sessionId: number) { return getStorage().then(s => s.getTasteProfile(sessionId)); }
+  createOrUpdateTasteProfile(sessionId: number, data: Partial<InsertTasteProfile>) { return getStorage().then(s => s.createOrUpdateTasteProfile(sessionId, data)); }
 }
 
 export const storage = new StorageProxy();
