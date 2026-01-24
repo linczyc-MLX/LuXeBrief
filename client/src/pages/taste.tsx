@@ -144,7 +144,7 @@ export default function TastePage() {
     return tasteCategories[currentQuad.category];
   };
 
-  // Handle image click
+  // Handle image click - allows selecting AND deselecting
   const handleImageClick = (imageIndex: number) => {
     if (!currentQuad) return;
 
@@ -155,16 +155,29 @@ export default function TastePage() {
       isSkipped: false,
     };
 
-    // Check if this image is already selected in another role
-    const isAlreadySelected =
-      current.favorite1 === imageIndex ||
-      current.favorite2 === imageIndex ||
-      current.leastFavorite === imageIndex;
-
-    if (isAlreadySelected) return; // Can't select same image twice
-
     let newSelection = { ...current };
 
+    // Check if this image is already selected - if so, deselect it
+    if (current.favorite1 === imageIndex) {
+      newSelection.favorite1 = null;
+      setSelectionMode('favorite1');
+      setSelections(new Map(selections).set(currentQuad.quadId, newSelection));
+      return;
+    }
+    if (current.favorite2 === imageIndex) {
+      newSelection.favorite2 = null;
+      setSelectionMode('favorite2');
+      setSelections(new Map(selections).set(currentQuad.quadId, newSelection));
+      return;
+    }
+    if (current.leastFavorite === imageIndex) {
+      newSelection.leastFavorite = null;
+      setSelectionMode('least');
+      setSelections(new Map(selections).set(currentQuad.quadId, newSelection));
+      return;
+    }
+
+    // Not already selected - add new selection based on current mode
     switch (selectionMode) {
       case 'favorite1':
         newSelection.favorite1 = imageIndex;
@@ -178,14 +191,15 @@ export default function TastePage() {
         newSelection.leastFavorite = imageIndex;
         setSelectionMode('done');
         break;
-      default:
+      case 'done':
+        // All selections made - user needs to use Next button or deselect first
         return;
     }
 
     newSelection.isSkipped = false;
     setSelections(new Map(selections).set(currentQuad.quadId, newSelection));
 
-    // Auto-save when selection is complete
+    // Auto-save when selection is complete (but don't auto-advance)
     if (selectionMode === 'least') {
       saveSelectionMutation.mutate({ quadId: currentQuad.quadId, selection: newSelection });
     }
@@ -233,15 +247,25 @@ export default function TastePage() {
     }
   };
 
-  // Auto-advance when selection is complete
+  // No auto-advance - user controls navigation with Next/Previous buttons
+  // This allows them to review and change selections before moving on
+
+  // Set correct selection mode when navigating to a new quad
   useEffect(() => {
-    if (selectionMode === 'done' && currentQuad) {
-      const timer = setTimeout(() => {
-        moveToNextQuad();
-      }, 500);
-      return () => clearTimeout(timer);
+    if (!currentQuad) return;
+    const sel = selections.get(currentQuad.quadId);
+    if (!sel) {
+      setSelectionMode('favorite1');
+    } else if (sel.favorite1 === null) {
+      setSelectionMode('favorite1');
+    } else if (sel.favorite2 === null) {
+      setSelectionMode('favorite2');
+    } else if (sel.leastFavorite === null) {
+      setSelectionMode('least');
+    } else {
+      setSelectionMode('done');
     }
-  }, [selectionMode, currentQuad, moveToNextQuad]);
+  }, [currentQuadIndex, currentQuad, selections]);
 
   // Calculate progress
   const completedCount = Array.from(selections.values()).filter(
