@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Loader2, Check, Star, Download } from "lucide-react";
-import type { Session, TasteProfile } from "@shared/schema";
+import type { Session, TasteProfile, TasteSelection } from "@shared/schema";
 import { downloadTasteReport } from "../utils/TasteReportGenerator";
 
 interface SessionWithProfile extends Session {
   profile?: TasteProfile | null;
+  selections?: TasteSelection[];
 }
 
 // Axis descriptions for display
@@ -273,7 +274,8 @@ export default function TasteResultsPage() {
                     projectName: session.projectName,
                     completedAt: session.completedAt,
                   },
-                  profile
+                  profile,
+                  session.selections || []
                 );
               } catch (err) {
                 console.error("Failed to download PDF:", err);
