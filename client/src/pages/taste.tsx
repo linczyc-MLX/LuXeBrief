@@ -17,6 +17,7 @@ import {
   Check,
   Loader2,
   Star,
+  Heart,
   ThumbsDown,
   SkipForward,
   Info,
@@ -454,14 +455,22 @@ export default function TastePage() {
                     loading="lazy"
                   />
 
-                  {/* Selection Badge */}
-                  {isSelected && (
-                    <div className={`absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center ${
-                      isFavorite1 ? 'bg-[#C9A962]' : isFavorite2 ? 'bg-[#C9A962]/70' : 'bg-gray-500'
-                    }`}>
-                      {isFavorite1 && <span className="text-white text-sm font-bold">1</span>}
-                      {isFavorite2 && <span className="text-white text-sm font-bold">2</span>}
-                      {isLeast && <ThumbsDown className="h-4 w-4 text-white" />}
+                  {/* Selection Badge - Heart with 1st/2nd for favorites, ThumbsDown for least */}
+                  {isFavorite1 && (
+                    <div className="absolute top-2 right-2 bg-[#C9A962] text-white px-2 py-1 rounded-full flex items-center gap-1 shadow-lg">
+                      <Heart className="h-4 w-4 fill-current" />
+                      <span className="text-xs font-bold">1st</span>
+                    </div>
+                  )}
+                  {isFavorite2 && (
+                    <div className="absolute top-2 right-2 bg-[#C9A962]/80 text-white px-2 py-1 rounded-full flex items-center gap-1 shadow-lg">
+                      <Heart className="h-4 w-4 fill-current" />
+                      <span className="text-xs font-bold">2nd</span>
+                    </div>
+                  )}
+                  {isLeast && (
+                    <div className="absolute top-2 right-2 bg-gray-500 text-white px-2 py-1 rounded-full flex items-center gap-1 shadow-lg">
+                      <ThumbsDown className="h-4 w-4" />
                     </div>
                   )}
 
