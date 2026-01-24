@@ -1128,12 +1128,9 @@ ${responseContext}`
   });
 
   // Get taste quads data (for client)
+  // Returns array of TasteQuad objects directly
   app.get("/api/taste/quads", async (req: Request, res: ExpressResponse) => {
-    res.json({
-      quads: tasteQuads,
-      categories: tasteCategories,
-      totalCount: getTasteQuadCount(),
-    });
+    res.json(tasteQuads);
   });
 
   return httpServer;
