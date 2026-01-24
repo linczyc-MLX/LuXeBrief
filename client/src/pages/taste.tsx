@@ -310,7 +310,7 @@ export default function TastePage() {
     );
   }
 
-  // Already completed
+  // Already completed - redirect to results page
   if (session.status === 'completed') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -320,10 +320,13 @@ export default function TastePage() {
           </div>
           <h1 className="text-2xl font-bold text-[#1a365d] mb-4">Exploration Complete</h1>
           <p className="text-gray-600 mb-6">
-            Thank you for completing your Taste Exploration. Your design preferences have been recorded and sent to your advisor.
+            Thank you for completing your Taste Exploration. Your design preferences have been recorded.
           </p>
-          <a href="https://not-4.sale" className="text-[#C9A962] hover:underline">
-            Visit N4S →
+          <a
+            href={`/taste/${token}/results`}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-[#1a365d] text-white rounded-lg font-semibold hover:bg-[#1a365d]/90 transition-colors"
+          >
+            View Results →
           </a>
         </div>
       </div>

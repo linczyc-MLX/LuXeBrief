@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Loader2, Check, Star } from "lucide-react";
+import { Loader2, Check, Star, Download } from "lucide-react";
 import type { Session, TasteProfile } from "@shared/schema";
+import { downloadTasteReport } from "../utils/TasteReportGenerator";
 
 interface SessionWithProfile extends Session {
   profile?: TasteProfile | null;
@@ -80,6 +82,7 @@ function ScoreBar({ label, score, low, high, description }: {
 
 export default function TasteResultsPage() {
   const { token } = useParams<{ token: string }>();
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Fetch session with profile
   const { data: session, isLoading, error } = useQuery<SessionWithProfile>({
@@ -256,15 +259,38 @@ export default function TasteResultsPage() {
 
         {/* Thank You */}
         <div className="text-center py-8">
-          <p className="text-gray-600 mb-4">
-            Your taste profile has been shared with your N4S advisor to help guide the design process.
+          <p className="text-gray-600 mb-6">
+            Your taste profile has been saved. Your N4S advisor can view these results in the KYC portal by clicking "Refresh Status" in the Design Preferences section.
           </p>
-          <a
-            href="https://not-4.sale"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-[#1a365d] text-white rounded-lg font-semibold hover:bg-[#1a365d]/90 transition-colors"
+          <button
+            onClick={async () => {
+              if (!session || !profile) return;
+              setIsDownloading(true);
+              try {
+                await downloadTasteReport(
+                  {
+                    clientName: session.clientName,
+                    projectName: session.projectName,
+                    completedAt: session.completedAt,
+                  },
+                  profile
+                );
+              } catch (err) {
+                console.error("Failed to download PDF:", err);
+              } finally {
+                setIsDownloading(false);
+              }
+            }}
+            disabled={isDownloading}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-[#1a365d] text-white rounded-lg font-semibold hover:bg-[#1a365d]/90 transition-colors disabled:opacity-50"
           >
-            Visit N4S
-          </a>
+            {isDownloading ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Download className="h-5 w-5" />
+            )}
+            Download PDF
+          </button>
         </div>
       </main>
 
