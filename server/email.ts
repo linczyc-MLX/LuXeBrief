@@ -187,6 +187,7 @@ export async function verifySmtpConnection(): Promise<boolean> {
 }
 
 // Dedicated Taste Exploration invitation email
+// Uses same styling as Lifestyle email (blue header bar, blue button)
 interface TasteInvitationParams {
   clientName: string;
   clientEmail: string;
@@ -206,84 +207,77 @@ export async function sendTasteExplorationInvitation(params: TasteInvitationPara
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>N4S Taste Exploration</title>
+  <title>LuXeBrief Taste Exploration Questionnaire</title>
 </head>
 <body style="margin: 0; padding: 0; font-family: 'Helvetica Neue', Arial, sans-serif; background-color: #f5f5f5;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background-color: #f5f5f5; padding: 40px 20px;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-          <!-- Header with gradient -->
+          <!-- Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #1a365d 0%, #2d4a7c 100%); padding: 40px 40px;">
+            <td style="background-color: #1e3a5f; padding: 30px 40px;">
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td>
-                    <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 600;">N4S</h1>
-                    <p style="margin: 5px 0 0; color: #C9A962; font-size: 14px; letter-spacing: 1px;">TASTE EXPLORATION</p>
+                    <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">N4S</h1>
+                    <p style="margin: 5px 0 0; color: #c9a227; font-size: 14px;">Luxury Residential Advisory</p>
+                  </td>
+                  <td align="right">
+                    <p style="margin: 0; color: #ffffff; font-size: 12px; opacity: 0.8;">LuXeBrief</p>
+                    <p style="margin: 0; color: #ffffff; font-size: 12px; opacity: 0.8;">Taste Exploration Questionnaire</p>
                   </td>
                 </tr>
               </table>
-            </td>
-          </tr>
-
-          <!-- Hero section -->
-          <tr>
-            <td style="padding: 40px; text-align: center;">
-              <h2 style="margin: 0 0 15px; color: #1a365d; font-size: 26px; font-weight: 600;">
-                Discover Your Design DNA
-              </h2>
-              <p style="margin: 0; color: #666666; font-size: 16px; line-height: 1.6;">
-                Welcome, ${clientName}
-              </p>
             </td>
           </tr>
 
           <!-- Content -->
           <tr>
-            <td style="padding: 0 40px 40px;">
+            <td style="padding: 40px;">
+              <h2 style="margin: 0 0 20px; color: #1e3a5f; font-size: 22px; font-weight: 600;">
+                Welcome, ${clientName}
+              </h2>
+
               <p style="margin: 0 0 20px; color: #333333; font-size: 16px; line-height: 1.6;">
-                As the <strong>${roleLabel}</strong> for the <strong>${projectName}</strong> project, we invite you to complete a visual design exploration that will help us understand your aesthetic preferences.
+                You've been invited to complete a LuXeBrief taste exploration questionnaire as the <strong>${roleLabel}</strong> for the <strong>${projectName}</strong> project.
               </p>
 
-              <div style="background-color: #f8f9fa; border-radius: 8px; padding: 20px; margin: 20px 0;">
-                <p style="margin: 0 0 10px; color: #1a365d; font-size: 14px; font-weight: 600;">How It Works:</p>
-                <p style="margin: 0; color: #666666; font-size: 14px; line-height: 1.8;">
-                  🖼️ View sets of four interior design images<br>
-                  ⭐ Select your favorite and second favorite<br>
-                  👎 Choose your least preferred option<br>
-                  📊 Your choices reveal your unique design DNA
-                </p>
-              </div>
+              <p style="margin: 0 0 30px; color: #666666; font-size: 15px; line-height: 1.6;">
+                This visual questionnaire will help us understand your design preferences through a series of image comparisons. Simply choose your favorites and least favorites to reveal your unique design DNA.
+              </p>
 
               <!-- CTA Button -->
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
-                  <td align="center" style="padding: 25px 0;">
-                    <a href="${invitationUrl}" style="display: inline-block; background: linear-gradient(135deg, #C9A962 0%, #b8943c 100%); color: #ffffff; text-decoration: none; padding: 18px 50px; border-radius: 8px; font-size: 16px; font-weight: 600; box-shadow: 0 4px 15px rgba(201,169,98,0.3);">
-                      Begin Exploration
+                  <td align="center" style="padding: 20px 0;">
+                    <a href="${invitationUrl}" style="display: inline-block; background-color: #1e3a5f; color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 6px; font-size: 16px; font-weight: 600;">
+                      Begin Your Questionnaire
                     </a>
                   </td>
                 </tr>
               </table>
 
-              <p style="margin: 0; color: #999999; font-size: 13px; line-height: 1.5; text-align: center;">
-                ⏱️ Takes approximately 10-15 minutes • Save progress anytime
+              <p style="margin: 30px 0 0; color: #999999; font-size: 13px; line-height: 1.5;">
+                This questionnaire takes approximately 10-15 minutes. You can pause and resume at any time.
               </p>
 
-              <p style="margin: 30px 0 0; color: #999999; font-size: 12px; line-height: 1.5;">
-                If the button above doesn't work, copy and paste this link:<br>
-                <a href="${invitationUrl}" style="color: #1a365d; word-break: break-all; font-size: 11px;">${invitationUrl}</a>
+              <p style="margin: 20px 0 0; color: #999999; font-size: 13px; line-height: 1.5;">
+                If the button above doesn't work, copy and paste this link into your browser:<br>
+                <a href="${invitationUrl}" style="color: #1e3a5f; word-break: break-all;">${invitationUrl}</a>
               </p>
             </td>
           </tr>
 
           <!-- Footer -->
           <tr>
-            <td style="background-color: #1a365d; padding: 25px 40px;">
-              <p style="margin: 0; color: rgba(255,255,255,0.8); font-size: 12px; line-height: 1.5; text-align: center;">
-                Your responses are confidential and will guide your design journey.<br>
-                <span style="color: #C9A962;">© 2026 N4S Luxury Residential Advisory</span>
+            <td style="background-color: #f8f9fa; padding: 25px 40px; border-top: 1px solid #e9ecef;">
+              <p style="margin: 0; color: #666666; font-size: 12px; line-height: 1.5;">
+                This email was sent by N4S Luxury Residential Advisory.<br>
+                Your responses are confidential and will only be shared with your project team.
+              </p>
+              <p style="margin: 15px 0 0; color: #999999; font-size: 11px;">
+                © 2026 N4S Luxury Residential Advisory. All rights reserved.
               </p>
             </td>
           </tr>
@@ -296,32 +290,27 @@ export async function sendTasteExplorationInvitation(params: TasteInvitationPara
 `;
 
   const textContent = `
-TASTE EXPLORATION - Discover Your Design DNA
-
 Welcome, ${clientName}
 
-As the ${roleLabel} for the ${projectName} project, we invite you to complete a visual design exploration that will help us understand your aesthetic preferences.
+You've been invited to complete a LuXeBrief taste exploration questionnaire as the ${roleLabel} for the ${projectName} project.
 
-HOW IT WORKS:
-- View sets of four interior design images
-- Select your favorite and second favorite
-- Choose your least preferred option
-- Your choices reveal your unique design DNA
+This visual questionnaire will help us understand your design preferences through a series of image comparisons. Simply choose your favorites and least favorites to reveal your unique design DNA.
 
 Click here to begin: ${invitationUrl}
 
-Takes approximately 10-15 minutes. You can save your progress and return anytime.
+This questionnaire takes approximately 10-15 minutes. You can pause and resume at any time.
 
 ---
-Your responses are confidential and will guide your design journey.
-© 2026 N4S Luxury Residential Advisory
+This email was sent by N4S Luxury Residential Advisory.
+Your responses are confidential and will only be shared with your project team.
+© 2026 N4S Luxury Residential Advisory. All rights reserved.
 `;
 
   try {
     const info = await transporter.sendMail({
       from: '"N4S Luxury Residential Advisory" <advisor@not-4.sale>',
       to: clientEmail,
-      subject: `Taste Exploration - ${projectName} | N4S`,
+      subject: `LuXeBrief Taste Exploration Questionnaire - ${projectName}`,
       text: textContent,
       html: htmlContent,
     });

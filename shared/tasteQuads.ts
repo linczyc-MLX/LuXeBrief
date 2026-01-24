@@ -1,103 +1,197 @@
 // Taste Exploration Quad Library
 // All images hosted on Cloudinary at:
-// https://res.cloudinary.com/drhp5e0kl/image/upload/v1766864130/Taste-Exploration/{folder}/{filename}.png
+// https://res.cloudinary.com/drhp5e0kl/image/upload/v1/Taste-Exploration/{quadId}-{position}
+// Note: Position is 1-indexed (1-4 for each image in the quad)
 
 import type { TasteQuad } from "./schema";
 
-const CLOUDINARY_BASE = 'https://res.cloudinary.com/drhp5e0kl/image/upload/v1766864130/Taste-Exploration';
-const img = (folder: string, filename: string) => `${CLOUDINARY_BASE}/${folder}/${filename}`;
+const CLOUDINARY_BASE = 'https://res.cloudinary.com/drhp5e0kl/image/upload/v1/Taste-Exploration';
+// Image URL format: {quadId}-{position} where position is 1-4
+const img = (quadId: string, position: number) => `${CLOUDINARY_BASE}/${quadId}-${position}`;
 
-// Attribute values derived from AS (Architectural Style) codes in filenames
-// AS1=Avant-Contemporary, AS3=Curated Minimal, AS6=Modern Classic, AS9=Heritage Estate
-const AS_MAP: Record<string, { warmth: number; formality: number; drama: number; tradition: number }> = {
-  AS1: { warmth: 4, formality: 6, drama: 10, tradition: 1 },
-  AS3: { warmth: 7, formality: 7, drama: 4, tradition: 4 },
-  AS6: { warmth: 6, formality: 7, drama: 5, tradition: 7 },
-  AS9: { warmth: 8, formality: 9, drama: 7, tradition: 10 }
+
+// Generate quads from the QUAD_MATRIX structure matching N4S tasteConfig.js
+// Each quad has 4 images with positions 1-4
+
+// AS attribute mapping (1-9 spectrum for design style)
+const AS_ATTRIBUTES: Record<string, { warmth: number; formality: number; drama: number; tradition: number }> = {
+  AS1: { warmth: 2, formality: 3, drama: 9, tradition: 1 },
+  AS2: { warmth: 3, formality: 4, drama: 8, tradition: 2 },
+  AS3: { warmth: 5, formality: 5, drama: 5, tradition: 3 },
+  AS4: { warmth: 4, formality: 4, drama: 4, tradition: 4 },
+  AS5: { warmth: 5, formality: 6, drama: 5, tradition: 5 },
+  AS6: { warmth: 6, formality: 7, drama: 5, tradition: 6 },
+  AS7: { warmth: 7, formality: 7, drama: 6, tradition: 7 },
+  AS8: { warmth: 8, formality: 9, drama: 7, tradition: 8 },
+  AS9: { warmth: 9, formality: 9, drama: 8, tradition: 9 }
 };
 
-const getAttributes = (as0: string, as1: string, as2: string, as3: string) => {
-  const styles = [as0, as1, as2, as3].map(as => AS_MAP[as] || AS_MAP.AS6);
+// Build quads array matching N4S QUAD_MATRIX structure (108 quads total: 12 per category × 9 categories)
+const buildQuad = (quadId: string, category: string, styles: string[]): TasteQuad => {
   return {
-    warmth: styles.map(s => s.warmth),
-    formality: styles.map(s => s.formality),
-    drama: styles.map(s => s.drama),
-    tradition: styles.map(s => s.tradition)
+    quadId,
+    category,
+    images: [
+      img(quadId, 1),
+      img(quadId, 2),
+      img(quadId, 3),
+      img(quadId, 4)
+    ],
+    attributes: {
+      warmth: styles.map(s => AS_ATTRIBUTES[s]?.warmth ?? 5),
+      formality: styles.map(s => AS_ATTRIBUTES[s]?.formality ?? 5),
+      drama: styles.map(s => AS_ATTRIBUTES[s]?.drama ?? 5),
+      tradition: styles.map(s => AS_ATTRIBUTES[s]?.tradition ?? 5)
+    }
   };
 };
 
 export const tasteQuads: TasteQuad[] = [
   // ============================================================
-  // LIVING SPACES (LS) - 4 quads
+  // EXTERIOR ARCHITECTURE (EA) - 12 quads
   // ============================================================
-  { quadId: 'LS-001', category: 'living_spaces', images: [img('LS', 'LS-001_0_AS1_VD1_MP1.png'), img('LS', 'LS-001_1_AS3_VD3_MP1.png'), img('LS', 'LS-001_2_AS6_VD6_MP1.png'), img('LS', 'LS-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'LS-002', category: 'living_spaces', images: [img('LS', 'LS-002_0_AS3_VD3_MP6.png'), img('LS', 'LS-002_1_AS6_VD6_MP6.png'), img('LS', 'LS-002_2_AS9_VD9_MP6.png'), img('LS', 'LS-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'LS-003', category: 'living_spaces', images: [img('LS', 'LS-003_0_AS9_VD9_MP1.png'), img('LS', 'LS-003_1_AS1_VD1_MP3.png'), img('LS', 'LS-003_2_AS3_VD3_MP3.png'), img('LS', 'LS-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'LS-004', category: 'living_spaces', images: [img('LS', 'LS-004_0_AS1_VD1_MP9.png'), img('LS', 'LS-004_1_AS3_VD3_MP9.png'), img('LS', 'LS-004_2_AS6_VD6_MP9.png'), img('LS', 'LS-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('EA-001', 'exterior_architecture', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('EA-002', 'exterior_architecture', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('EA-003', 'exterior_architecture', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('EA-004', 'exterior_architecture', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('EA-005', 'exterior_architecture', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('EA-006', 'exterior_architecture', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('EA-007', 'exterior_architecture', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('EA-008', 'exterior_architecture', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('EA-009', 'exterior_architecture', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('EA-010', 'exterior_architecture', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('EA-011', 'exterior_architecture', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('EA-012', 'exterior_architecture', ['AS2', 'AS5', 'AS6', 'AS9']),
 
   // ============================================================
-  // DINING SPACES (DS) - 4 quads
+  // LIVING SPACES (LS) - 12 quads
   // ============================================================
-  { quadId: 'DS-001', category: 'dining_spaces', images: [img('DS', 'DS-001_0_AS1_VD1_MP1.png'), img('DS', 'DS-001_1_AS3_VD3_MP1.png'), img('DS', 'DS-001_2_AS6_VD6_MP1.png'), img('DS', 'DS-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'DS-002', category: 'dining_spaces', images: [img('DS', 'DS-002_0_AS3_VD3_MP6.png'), img('DS', 'DS-002_1_AS6_VD6_MP6.png'), img('DS', 'DS-002_2_AS9_VD9_MP6.png'), img('DS', 'DS-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'DS-003', category: 'dining_spaces', images: [img('DS', 'DS-003_0_AS9_VD9_MP1.png'), img('DS', 'DS-003_1_AS1_VD1_MP3.png'), img('DS', 'DS-003_2_AS3_VD3_MP3.png'), img('DS', 'DS-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'DS-004', category: 'dining_spaces', images: [img('DS', 'DS-004_0_AS1_VD1_MP9.png'), img('DS', 'DS-004_1_AS3_VD3_MP9.png'), img('DS', 'DS-004_2_AS6_VD6_MP9.png'), img('DS', 'DS-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('LS-001', 'living_spaces', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('LS-002', 'living_spaces', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('LS-003', 'living_spaces', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('LS-004', 'living_spaces', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('LS-005', 'living_spaces', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('LS-006', 'living_spaces', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('LS-007', 'living_spaces', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('LS-008', 'living_spaces', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('LS-009', 'living_spaces', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('LS-010', 'living_spaces', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('LS-011', 'living_spaces', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('LS-012', 'living_spaces', ['AS2', 'AS5', 'AS6', 'AS9']),
 
   // ============================================================
-  // KITCHENS (KT) - 4 quads
+  // DINING SPACES (DS) - 12 quads
   // ============================================================
-  { quadId: 'KT-001', category: 'kitchens', images: [img('KT', 'KT-001_0_AS1_VD1_MP1.png'), img('KT', 'KT-001_1_AS3_VD3_MP1.png'), img('KT', 'KT-001_2_AS6_VD6_MP1.png'), img('KT', 'KT-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'KT-002', category: 'kitchens', images: [img('KT', 'KT-002_0_AS3_VD3_MP6.png'), img('KT', 'KT-002_1_AS6_VD6_MP6.png'), img('KT', 'KT-002_2_AS9_VD9_MP6.png'), img('KT', 'KT-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'KT-003', category: 'kitchens', images: [img('KT', 'KT-003_0_AS9_VD9_MP1.png'), img('KT', 'KT-003_1_AS1_VD1_MP3.png'), img('KT', 'KT-003_2_AS3_VD3_MP3.png'), img('KT', 'KT-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'KT-004', category: 'kitchens', images: [img('KT', 'KT-004_0_AS1_VD1_MP9.png'), img('KT', 'KT-004_1_AS3_VD3_MP9.png'), img('KT', 'KT-004_2_AS6_VD6_MP9.png'), img('KT', 'KT-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('DS-001', 'dining_spaces', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('DS-002', 'dining_spaces', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('DS-003', 'dining_spaces', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('DS-004', 'dining_spaces', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('DS-005', 'dining_spaces', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('DS-006', 'dining_spaces', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('DS-007', 'dining_spaces', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('DS-008', 'dining_spaces', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('DS-009', 'dining_spaces', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('DS-010', 'dining_spaces', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('DS-011', 'dining_spaces', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('DS-012', 'dining_spaces', ['AS2', 'AS5', 'AS6', 'AS9']),
 
   // ============================================================
-  // PRIMARY BEDROOMS (PB) - 4 quads
+  // KITCHENS (KT) - 12 quads
   // ============================================================
-  { quadId: 'PB-001', category: 'primary_bedrooms', images: [img('PB', 'PB-001_0_AS1_VD1_MP1.png'), img('PB', 'PB-001_1_AS3_VD3_MP1.png'), img('PB', 'PB-001_2_AS6_VD6_MP1.png'), img('PB', 'PB-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'PB-002', category: 'primary_bedrooms', images: [img('PB', 'PB-002_0_AS3_VD3_MP6.png'), img('PB', 'PB-002_1_AS6_VD6_MP6.png'), img('PB', 'PB-002_2_AS9_VD9_MP6.png'), img('PB', 'PB-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'PB-003', category: 'primary_bedrooms', images: [img('PB', 'PB-003_0_AS9_VD9_MP1.png'), img('PB', 'PB-003_1_AS1_VD1_MP3.png'), img('PB', 'PB-003_2_AS3_VD3_MP3.png'), img('PB', 'PB-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'PB-004', category: 'primary_bedrooms', images: [img('PB', 'PB-004_0_AS1_VD1_MP9.png'), img('PB', 'PB-004_1_AS3_VD3_MP9.png'), img('PB', 'PB-004_2_AS6_VD6_MP9.png'), img('PB', 'PB-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('KT-001', 'kitchens', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('KT-002', 'kitchens', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('KT-003', 'kitchens', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('KT-004', 'kitchens', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('KT-005', 'kitchens', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('KT-006', 'kitchens', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('KT-007', 'kitchens', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('KT-008', 'kitchens', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('KT-009', 'kitchens', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('KT-010', 'kitchens', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('KT-011', 'kitchens', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('KT-012', 'kitchens', ['AS2', 'AS5', 'AS6', 'AS9']),
 
   // ============================================================
-  // PRIMARY BATHROOMS (PBT) - 4 quads
+  // FAMILY AREAS (FA) - 12 quads
   // ============================================================
-  { quadId: 'PBT-001', category: 'primary_bathrooms', images: [img('PBT', 'PBT-001_0_AS1_VD1_MP1.png'), img('PBT', 'PBT-001_1_AS3_VD3_MP1.png'), img('PBT', 'PBT-001_2_AS6_VD6_MP1.png'), img('PBT', 'PBT-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'PBT-002', category: 'primary_bathrooms', images: [img('PBT', 'PBT-002_0_AS3_VD3_MP6.png'), img('PBT', 'PBT-002_1_AS6_VD6_MP6.png'), img('PBT', 'PBT-002_2_AS9_VD9_MP6.png'), img('PBT', 'PBT-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'PBT-003', category: 'primary_bathrooms', images: [img('PBT', 'PBT-003_0_AS9_VD9_MP1.png'), img('PBT', 'PBT-003_1_AS1_VD1_MP3.png'), img('PBT', 'PBT-003_2_AS3_VD3_MP3.png'), img('PBT', 'PBT-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'PBT-004', category: 'primary_bathrooms', images: [img('PBT', 'PBT-004_0_AS1_VD1_MP9.png'), img('PBT', 'PBT-004_1_AS3_VD3_MP9.png'), img('PBT', 'PBT-004_2_AS6_VD6_MP9.png'), img('PBT', 'PBT-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('FA-001', 'family_areas', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('FA-002', 'family_areas', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('FA-003', 'family_areas', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('FA-004', 'family_areas', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('FA-005', 'family_areas', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('FA-006', 'family_areas', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('FA-007', 'family_areas', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('FA-008', 'family_areas', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('FA-009', 'family_areas', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('FA-010', 'family_areas', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('FA-011', 'family_areas', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('FA-012', 'family_areas', ['AS2', 'AS5', 'AS6', 'AS9']),
 
   // ============================================================
-  // GUEST BEDROOMS (GB) - 4 quads
+  // PRIMARY BEDROOMS (PB) - 12 quads
   // ============================================================
-  { quadId: 'GB-001', category: 'guest_bedrooms', images: [img('GB', 'GB-001_0_AS1_VD1_MP1.png'), img('GB', 'GB-001_1_AS3_VD3_MP1.png'), img('GB', 'GB-001_2_AS6_VD6_MP1.png'), img('GB', 'GB-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'GB-002', category: 'guest_bedrooms', images: [img('GB', 'GB-002_0_AS3_VD3_MP6.png'), img('GB', 'GB-002_1_AS6_VD6_MP6.png'), img('GB', 'GB-002_2_AS9_VD9_MP6.png'), img('GB', 'GB-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'GB-003', category: 'guest_bedrooms', images: [img('GB', 'GB-003_0_AS9_VD9_MP1.png'), img('GB', 'GB-003_1_AS1_VD1_MP3.png'), img('GB', 'GB-003_2_AS3_VD3_MP3.png'), img('GB', 'GB-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'GB-004', category: 'guest_bedrooms', images: [img('GB', 'GB-004_0_AS1_VD1_MP9.png'), img('GB', 'GB-004_1_AS3_VD3_MP9.png'), img('GB', 'GB-004_2_AS6_VD6_MP9.png'), img('GB', 'GB-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('PB-001', 'primary_bedrooms', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('PB-002', 'primary_bedrooms', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('PB-003', 'primary_bedrooms', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('PB-004', 'primary_bedrooms', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('PB-005', 'primary_bedrooms', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('PB-006', 'primary_bedrooms', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('PB-007', 'primary_bedrooms', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('PB-008', 'primary_bedrooms', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('PB-009', 'primary_bedrooms', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('PB-010', 'primary_bedrooms', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('PB-011', 'primary_bedrooms', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('PB-012', 'primary_bedrooms', ['AS2', 'AS5', 'AS6', 'AS9']),
 
   // ============================================================
-  // FAMILY AREAS (FA) - 4 quads
+  // PRIMARY BATHROOMS (PBT) - 14 quads
   // ============================================================
-  { quadId: 'FA-001', category: 'family_areas', images: [img('FA', 'FA-001_0_AS1_VD1_MP1.png'), img('FA', 'FA-001_1_AS3_VD3_MP1.png'), img('FA', 'FA-001_2_AS6_VD6_MP1.png'), img('FA', 'FA-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'FA-002', category: 'family_areas', images: [img('FA', 'FA-002_0_AS3_VD3_MP6.png'), img('FA', 'FA-002_1_AS6_VD6_MP6.png'), img('FA', 'FA-002_2_AS9_VD9_MP6.png'), img('FA', 'FA-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'FA-003', category: 'family_areas', images: [img('FA', 'FA-003_0_AS9_VD9_MP1.png'), img('FA', 'FA-003_1_AS1_VD1_MP3.png'), img('FA', 'FA-003_2_AS3_VD3_MP3.png'), img('FA', 'FA-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'FA-004', category: 'family_areas', images: [img('FA', 'FA-004_0_AS1_VD1_MP9.png'), img('FA', 'FA-004_1_AS3_VD3_MP9.png'), img('FA', 'FA-004_2_AS6_VD6_MP9.png'), img('FA', 'FA-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('PBT-001', 'primary_bathrooms', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('PBT-002', 'primary_bathrooms', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('PBT-003', 'primary_bathrooms', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('PBT-004', 'primary_bathrooms', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('PBT-005', 'primary_bathrooms', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('PBT-006', 'primary_bathrooms', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('PBT-007', 'primary_bathrooms', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('PBT-008', 'primary_bathrooms', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('PBT-009', 'primary_bathrooms', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('PBT-010', 'primary_bathrooms', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('PBT-011', 'primary_bathrooms', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('PBT-012', 'primary_bathrooms', ['AS2', 'AS5', 'AS6', 'AS9']),
+  buildQuad('PBT-013', 'primary_bathrooms', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('PBT-014', 'primary_bathrooms', ['AS2', 'AS4', 'AS7', 'AS9']),
 
   // ============================================================
-  // EXTERIOR ARCHITECTURE (EA) - 4 quads
+  // GUEST BEDROOMS (GB) - 12 quads
   // ============================================================
-  { quadId: 'EA-001', category: 'exterior_architecture', images: [img('EA', 'EA-001_0_AS1_VD1_MP1.png'), img('EA', 'EA-001_1_AS3_VD3_MP1.png'), img('EA', 'EA-001_2_AS6_VD6_MP1.png'), img('EA', 'EA-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'EA-002', category: 'exterior_architecture', images: [img('EA', 'EA-002_0_AS3_VD3_MP6.png'), img('EA', 'EA-002_1_AS6_VD6_MP6.png'), img('EA', 'EA-002_2_AS9_VD9_MP6.png'), img('EA', 'EA-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'EA-003', category: 'exterior_architecture', images: [img('EA', 'EA-003_0_AS9_VD9_MP1.png'), img('EA', 'EA-003_1_AS1_VD1_MP3.png'), img('EA', 'EA-003_2_AS3_VD3_MP3.png'), img('EA', 'EA-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'EA-004', category: 'exterior_architecture', images: [img('EA', 'EA-004_0_AS1_VD1_MP9.png'), img('EA', 'EA-004_1_AS3_VD3_MP9.png'), img('EA', 'EA-004_2_AS6_VD6_MP9.png'), img('EA', 'EA-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('GB-001', 'guest_bedrooms', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('GB-002', 'guest_bedrooms', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('GB-003', 'guest_bedrooms', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('GB-004', 'guest_bedrooms', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('GB-005', 'guest_bedrooms', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('GB-006', 'guest_bedrooms', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('GB-007', 'guest_bedrooms', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('GB-008', 'guest_bedrooms', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('GB-009', 'guest_bedrooms', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('GB-010', 'guest_bedrooms', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('GB-011', 'guest_bedrooms', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('GB-012', 'guest_bedrooms', ['AS2', 'AS5', 'AS6', 'AS9']),
 
   // ============================================================
-  // OUTDOOR LIVING (OL) - 4 quads
+  // OUTDOOR LIVING (OL) - 12 quads
   // ============================================================
-  { quadId: 'OL-001', category: 'outdoor_living', images: [img('OL', 'OL-001_0_AS1_VD1_MP1.png'), img('OL', 'OL-001_1_AS3_VD3_MP1.png'), img('OL', 'OL-001_2_AS6_VD6_MP1.png'), img('OL', 'OL-001_3_AS9_VD9_MP1.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
-  { quadId: 'OL-002', category: 'outdoor_living', images: [img('OL', 'OL-002_0_AS3_VD3_MP6.png'), img('OL', 'OL-002_1_AS6_VD6_MP6.png'), img('OL', 'OL-002_2_AS9_VD9_MP6.png'), img('OL', 'OL-002_3_AS1_VD1_MP9.png')], attributes: getAttributes('AS3', 'AS6', 'AS9', 'AS1') },
-  { quadId: 'OL-003', category: 'outdoor_living', images: [img('OL', 'OL-003_0_AS9_VD9_MP1.png'), img('OL', 'OL-003_1_AS1_VD1_MP3.png'), img('OL', 'OL-003_2_AS3_VD3_MP3.png'), img('OL', 'OL-003_3_AS6_VD6_MP3.png')], attributes: getAttributes('AS9', 'AS1', 'AS3', 'AS6') },
-  { quadId: 'OL-004', category: 'outdoor_living', images: [img('OL', 'OL-004_0_AS1_VD1_MP9.png'), img('OL', 'OL-004_1_AS3_VD3_MP9.png'), img('OL', 'OL-004_2_AS6_VD6_MP9.png'), img('OL', 'OL-004_3_AS9_VD9_MP9.png')], attributes: getAttributes('AS1', 'AS3', 'AS6', 'AS9') },
+  buildQuad('OL-001', 'outdoor_living', ['AS1', 'AS3', 'AS6', 'AS8']),
+  buildQuad('OL-002', 'outdoor_living', ['AS2', 'AS4', 'AS5', 'AS7']),
+  buildQuad('OL-003', 'outdoor_living', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('OL-004', 'outdoor_living', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('OL-005', 'outdoor_living', ['AS1', 'AS3', 'AS5', 'AS9']),
+  buildQuad('OL-006', 'outdoor_living', ['AS2', 'AS4', 'AS6', 'AS8']),
+  buildQuad('OL-007', 'outdoor_living', ['AS1', 'AS3', 'AS7', 'AS9']),
+  buildQuad('OL-008', 'outdoor_living', ['AS2', 'AS5', 'AS6', 'AS8']),
+  buildQuad('OL-009', 'outdoor_living', ['AS1', 'AS4', 'AS5', 'AS7']),
+  buildQuad('OL-010', 'outdoor_living', ['AS2', 'AS3', 'AS6', 'AS9']),
+  buildQuad('OL-011', 'outdoor_living', ['AS1', 'AS4', 'AS7', 'AS8']),
+  buildQuad('OL-012', 'outdoor_living', ['AS2', 'AS5', 'AS6', 'AS9']),
 ];
 
 export const getTasteQuadCount = () => tasteQuads.length;
