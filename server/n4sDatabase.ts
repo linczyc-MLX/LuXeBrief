@@ -222,8 +222,16 @@ export class N4SDatabase {
   }
 
   /**
-   * Get PDF document from stored LuXeBrief sessions
-   * Reports are already generated and stored - we just need to find and return them
+   * Get PDF document by proxying to LuXeBrief's export/pdf endpoint
+   *
+   * Data flow (matching N4S P1.A.6 behavior):
+   * 1. N4S stores LuXeBrief session IDs in kycData:
+   *    - kycData.principal.lifestyleLiving.luxeBriefSessionId (Lifestyle questionnaire)
+   *    - kycData.principal.lifestyleLiving.luxeLivingSessionId (Living questionnaire)
+   *    - kycData.secondary.lifestyleLiving.luxeBriefSessionId (Secondary Lifestyle)
+   *    - kycData.secondary.lifestyleLiving.luxeLivingSessionId (Secondary Living)
+   * 2. LuXeBrief generates PDFs on-demand via /api/sessions/{sessionId}/export/pdf
+   * 3. Portal fetches session ID from N4S, then proxies PDF from LuXeBrief
    */
   static async getPDF(slug: string, module: string, type: string): Promise<Buffer | null> {
     // Only KYC module has LuXeBrief reports for now
@@ -233,79 +241,93 @@ export class N4SDatabase {
     }
 
     try {
-      // First get the project ID for this portal slug
+      // First get the project by portal slug
       const projects = await n4sFetch('/projects.php');
-      let n4sProjectId: string | null = null;
+      let projectData: any = null;
 
       for (const project of projects) {
         const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
         if (fullProject.lcdData?.portalSlug === slug) {
-          n4sProjectId = project.id;
+          projectData = fullProject;
           break;
         }
       }
 
-      if (!n4sProjectId) {
+      if (!projectData) {
         console.log(`[N4S API] No project found for slug: ${slug}`);
         return null;
       }
 
-      // Import the storage module to query sessions
-      const { storage } = await import('./storage');
-      const { CloudStorageService } = await import('./cloudStorage');
-
-      // Determine session type and principal type based on report type
-      let sessionType: string;
-      let principalType: string;
+      // Extract the LuXeBrief session ID from kycData based on report type
+      const kycData = projectData.kycData || {};
+      let sessionId: number | null = null;
 
       switch (type) {
         case 'profile-report':
+          // Profile report is the KYC report generator - generated client-side in N4S
+          console.log('[N4S API] Profile report is generated client-side in N4S, not stored in LuXeBrief');
+          return null;
+
         case 'principal-lifestyle':
-          sessionType = 'lifestyle';
-          principalType = 'principal';
+          // Principal's Lifestyle questionnaire session
+          sessionId = kycData.principal?.lifestyleLiving?.luxeBriefSessionId;
+          console.log(`[N4S API] Looking for principal lifestyle session ID in kycData.principal.lifestyleLiving.luxeBriefSessionId: ${sessionId}`);
           break;
+
         case 'principal-living':
-          sessionType = 'living';
-          principalType = 'principal';
+          // Principal's Living questionnaire session
+          sessionId = kycData.principal?.lifestyleLiving?.luxeLivingSessionId;
+          console.log(`[N4S API] Looking for principal living session ID in kycData.principal.lifestyleLiving.luxeLivingSessionId: ${sessionId}`);
           break;
+
         case 'secondary-lifestyle':
-          sessionType = 'lifestyle';
-          principalType = 'secondary';
+          // Secondary's Lifestyle questionnaire session
+          sessionId = kycData.secondary?.lifestyleLiving?.luxeBriefSessionId;
+          console.log(`[N4S API] Looking for secondary lifestyle session ID in kycData.secondary.lifestyleLiving.luxeBriefSessionId: ${sessionId}`);
           break;
+
         case 'secondary-living':
-          sessionType = 'living';
-          principalType = 'secondary';
+          // Secondary's Living questionnaire session
+          sessionId = kycData.secondary?.lifestyleLiving?.luxeLivingSessionId;
+          console.log(`[N4S API] Looking for secondary living session ID in kycData.secondary.lifestyleLiving.luxeLivingSessionId: ${sessionId}`);
           break;
+
         case 'partner-alignment':
-          // This would need special handling - for now return null
+          // Partner alignment is calculated/generated client-side
           console.log('[N4S API] Partner alignment report not yet implemented');
           return null;
+
         default:
           console.log(`[N4S API] Unknown report type: ${type}`);
           return null;
       }
 
-      // Find session with matching n4sProjectId and principal type
-      const session = await storage.getSessionByN4SProject(n4sProjectId, sessionType, principalType);
-
-      if (!session) {
-        console.log(`[N4S API] No ${sessionType} session found for project ${n4sProjectId}, ${principalType}`);
+      if (!sessionId) {
+        console.log(`[N4S API] No session ID found for ${type} in kycData`);
+        console.log(`[N4S API] kycData.principal.lifestyleLiving:`, JSON.stringify(kycData.principal?.lifestyleLiving || {}, null, 2));
+        console.log(`[N4S API] kycData.secondary.lifestyleLiving:`, JSON.stringify(kycData.secondary?.lifestyleLiving || {}, null, 2));
         return null;
       }
 
-      // Read the PDF from storage
-      const sessionPath = CloudStorageService.getSessionPath(session.clientName, session.id);
-      const pdfPath = `${sessionPath}/reports/report.pdf`;
+      // Proxy the PDF from LuXeBrief's export endpoint (same endpoint N4S uses in P1.A.6)
+      const LUXEBRIEF_URL = 'https://luxebrief.not-4.sale';
+      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/export/pdf`;
 
-      const pdfBuffer = await CloudStorageService.readFile(pdfPath);
+      console.log(`[N4S API] Fetching PDF from LuXeBrief: ${pdfUrl}`);
 
-      if (!pdfBuffer) {
-        console.log(`[N4S API] No PDF found at: ${pdfPath}`);
+      const response = await fetch(pdfUrl);
+
+      if (!response.ok) {
+        console.log(`[N4S API] LuXeBrief returned ${response.status}: ${response.statusText}`);
         return null;
       }
 
-      console.log(`[N4S API] Found PDF for ${type}: ${pdfPath}`);
+      const arrayBuffer = await response.arrayBuffer();
+      const pdfBuffer = Buffer.from(arrayBuffer);
+
+      console.log(`[N4S API] Successfully retrieved PDF for ${type}, size: ${pdfBuffer.length} bytes`);
       return pdfBuffer;
+
     } catch (error) {
       console.error('[N4S API] getPDF error:', error);
       return null;
