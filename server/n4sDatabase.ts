@@ -143,12 +143,25 @@ export class N4SDatabase {
       for (const project of projects) {
         const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
         if (fullProject.lcdData?.portalSlug === slug) {
+          // Get client name from kycData (N4S stores it in principal.portfolioContext)
+          const portfolioContext = fullProject.kycData?.principal?.portfolioContext || {};
+          const clientName = [
+            portfolioContext.principalFirstName,
+            portfolioContext.principalLastName
+          ].filter(Boolean).join(' ') || 'Client';
+
+          // Calculate KYC completion
+          const kycSections = ['portfolioContext', 'familyHousehold', 'projectParameters', 'budgetFramework', 'designIdentity', 'lifestyleLiving'];
+          const principalData = fullProject.kycData?.principal || {};
+          const completedSections = kycSections.filter(s => principalData[s] && Object.keys(principalData[s]).length > 0).length;
+          const kycCompleted = completedSections >= kycSections.length - 1; // 5/6 or more = complete
+
           return {
             id: project.id,
             projectName: project.project_name || fullProject.clientData?.projectName,
-            clientName: fullProject.clientData?.clientName || 'Client',
+            clientName,
             advisorAuthorityLevel: fullProject.settingsData?.advisorAuthorityLevel || 'limited',
-            kycCompleted: fullProject.clientData?.kycCompleted || false,
+            kycCompleted,
             budgetRange: fullProject.clientData?.budgetRange || null,
           };
         }
