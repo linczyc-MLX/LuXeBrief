@@ -63,6 +63,8 @@ interface ModuleData {
   signed: boolean;
   signedAt: string | null;
   deliverables: Record<string, boolean>;
+  pdfUrls?: Record<string, string>;
+  kycCompleted?: boolean;
   partnerAlignmentScore?: number;
   totalSqFt?: number;
   budgetRange?: string;
@@ -402,7 +404,20 @@ export default function Portal() {
                           <p className="text-sm text-gray-500">{info.fullName}</p>
                         </div>
                       </div>
-                      {moduleData.signed ? (
+                      {/* Show completion status based on data (kycCompleted) not sign-off */}
+                      {module === 'kyc' ? (
+                        moduleData.kycCompleted ? (
+                          <span className="flex items-center gap-1 text-xs text-green-500 bg-green-900/30 px-2 py-1 rounded mr-2">
+                            <CheckCircle2 className="w-3 h-3" />
+                            Complete
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-xs text-[#c9a227] bg-[#c9a227]/20 px-2 py-1 rounded mr-2">
+                            <Circle className="w-3 h-3" />
+                            In Progress
+                          </span>
+                        )
+                      ) : moduleData.signed ? (
                         <span className="flex items-center gap-1 text-xs text-green-500 bg-green-900/30 px-2 py-1 rounded mr-2">
                           <CheckCircle2 className="w-3 h-3" />
                           Signed Off
@@ -417,39 +432,60 @@ export default function Portal() {
                     <AccordionContent className="px-4 pb-4">
                       {/* Deliverables */}
                       <div className="space-y-3">
-                        {Object.entries(moduleData.deliverables).map(([key, available]) => (
-                          <div
-                            key={key}
-                            className={`flex items-center justify-between p-3 rounded-lg ${
-                              available ? 'bg-[#252525]' : 'bg-[#151515] opacity-50'
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <FileText
-                                className={`w-5 h-5 ${
-                                  available ? 'text-[#c9a227]' : 'text-gray-600'
-                                }`}
-                              />
-                              <span className="text-sm text-gray-300 capitalize">
-                                {key.replace(/([A-Z])/g, ' $1').trim()}
-                              </span>
+                        {Object.entries(moduleData.deliverables).map(([key, available]) => {
+                          // Format display name: camelCase to Title Case
+                          const displayName = key
+                            .replace(/([A-Z])/g, ' $1')
+                            .replace(/^./, str => str.toUpperCase())
+                            .trim();
+
+                          // Get PDF URL for this deliverable
+                          const pdfUrl = moduleData.pdfUrls?.[key];
+
+                          // Handle View button click - open PDF in new tab
+                          const handleView = () => {
+                            if (pdfUrl) {
+                              const token = sessionStorage.getItem('portalToken');
+                              // Open PDF with auth token
+                              window.open(`${pdfUrl}?token=${token}`, '_blank');
+                            }
+                          };
+
+                          return (
+                            <div
+                              key={key}
+                              className={`flex items-center justify-between p-3 rounded-lg ${
+                                available ? 'bg-[#252525]' : 'bg-[#151515] opacity-50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <FileText
+                                  className={`w-5 h-5 ${
+                                    available ? 'text-[#c9a227]' : 'text-gray-600'
+                                  }`}
+                                />
+                                <span className="text-sm text-gray-300">
+                                  {displayName}
+                                </span>
+                              </div>
+                              {available ? (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-[#c9a227] hover:text-[#d4af37]"
+                                  onClick={handleView}
+                                >
+                                  <Download className="w-4 h-4 mr-1" />
+                                  View
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-gray-600">
+                                  Not Available
+                                </span>
+                              )}
                             </div>
-                            {available ? (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-[#c9a227] hover:text-[#d4af37]"
-                              >
-                                <Download className="w-4 h-4 mr-1" />
-                                View
-                              </Button>
-                            ) : (
-                              <span className="text-xs text-gray-600">
-                                Not Available
-                              </span>
-                            )}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Sign-off Button */}

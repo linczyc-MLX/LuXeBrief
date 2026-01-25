@@ -243,11 +243,26 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
           visible: true,
           signed: milestones.kyc?.signed || false,
           signedAt: milestones.kyc?.signedAt || null,
+          // kycCompleted indicates actual data completion (not sign-off)
+          kycCompleted: projectData.kycCompleted || false,
           deliverables: {
             profileReport: visibility.kyc.profileReport && projectData.kycCompleted,
-            luxebriefPrincipal: visibility.kyc.luxebriefPrincipal,
-            luxebriefSecondary: visibility.kyc.luxebriefSecondary,
+            // Separate Lifestyle and Living reports for Principal
+            principalLifestyle: visibility.kyc.luxebriefPrincipal && projectData.kycCompleted,
+            principalLiving: visibility.kyc.luxebriefPrincipal && projectData.kycCompleted,
+            // Separate Lifestyle and Living reports for Secondary (if applicable)
+            secondaryLifestyle: visibility.kyc.luxebriefSecondary && kycData?.secondary,
+            secondaryLiving: visibility.kyc.luxebriefSecondary && kycData?.secondary,
             partnerAlignment: visibility.kyc.partnerAlignment && kycData?.partnerAlignmentScore,
+          },
+          // PDF URLs for each deliverable
+          pdfUrls: {
+            profileReport: `/api/portal/pdf/kyc/profile-report`,
+            principalLifestyle: `/api/portal/pdf/kyc/principal-lifestyle`,
+            principalLiving: `/api/portal/pdf/kyc/principal-living`,
+            secondaryLifestyle: `/api/portal/pdf/kyc/secondary-lifestyle`,
+            secondaryLiving: `/api/portal/pdf/kyc/secondary-living`,
+            partnerAlignment: `/api/portal/pdf/kyc/partner-alignment`,
           },
           partnerAlignmentScore: kycData?.partnerAlignmentScore || null,
         };
@@ -263,6 +278,10 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
             spaceProgram: visibility.fyi.spaceProgram && fyiData?.spaceProgramComplete,
             zoneBreakdown: visibility.fyi.zoneBreakdown,
           },
+          pdfUrls: {
+            spaceProgram: `/api/portal/pdf/fyi/space-program`,
+            zoneBreakdown: `/api/portal/pdf/fyi/zone-breakdown`,
+          },
           totalSqFt: fyiData?.totalSquareFootage || null,
         };
       }
@@ -277,6 +296,10 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
             validationResults: visibility.mvp.validationResults,
             designBrief: visibility.mvp.designBrief,
           },
+          pdfUrls: {
+            validationResults: `/api/portal/pdf/mvp/validation-results`,
+            designBrief: `/api/portal/pdf/mvp/design-brief`,
+          },
         };
       }
 
@@ -289,6 +312,10 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
           deliverables: {
             propertyShortlist: visibility.kym.propertyShortlist,
             marketSnapshot: visibility.kym.marketSnapshot,
+          },
+          pdfUrls: {
+            propertyShortlist: `/api/portal/pdf/kym/property-shortlist`,
+            marketSnapshot: `/api/portal/pdf/kym/market-snapshot`,
           },
         };
       }
@@ -303,6 +330,10 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
             recommendedSites: visibility.kys.recommendedSites,
             siteComparison: visibility.kys.siteComparison,
           },
+          pdfUrls: {
+            recommendedSites: `/api/portal/pdf/kys/recommended-sites`,
+            siteComparison: `/api/portal/pdf/kys/site-comparison`,
+          },
         };
       }
 
@@ -314,6 +345,9 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
           signedAt: milestones.vmx?.signedAt || null,
           deliverables: {
             budgetSummary: visibility.vmx.budgetSummary,
+          },
+          pdfUrls: {
+            budgetSummary: `/api/portal/pdf/vmx/budget-summary`,
           },
           budgetRange: projectData.budgetRange || null,
         };
@@ -373,10 +407,28 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
     }
   });
 
-  // Stream PDF document
-  app.get('/api/portal/pdf/:module/:type', portalAuth, async (req: Request, res: Response) => {
+  // Stream PDF document - supports both header auth and query token
+  app.get('/api/portal/pdf/:module/:type', async (req: Request, res: Response) => {
     try {
-      const session = (req as any).portalSession;
+      // Support both Authorization header and query token (for new tab opening)
+      const authHeader = req.headers.authorization;
+      const queryToken = req.query.token as string;
+      const sessionToken = authHeader?.replace('Bearer ', '') || queryToken;
+
+      if (!sessionToken) {
+        return res.status(401).json({ error: 'No session token provided' });
+      }
+
+      const session = portalSessions.get(sessionToken);
+      if (!session) {
+        return res.status(401).json({ error: 'Invalid session token' });
+      }
+
+      if (session.expiresAt < new Date()) {
+        portalSessions.delete(sessionToken);
+        return res.status(401).json({ error: 'Session expired' });
+      }
+
       const { slug } = session;
       const module = req.params.module as string;
       const type = req.params.type as string;
