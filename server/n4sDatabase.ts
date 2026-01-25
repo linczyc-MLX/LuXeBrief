@@ -12,7 +12,7 @@
  */
 
 // N4S Dashboard API base URL
-const N4S_API_URL = process.env.N4S_API_URL || 'https://home-5019406629.app-ionos.space/api';
+const N4S_API_URL = process.env.N4S_API_URL || 'https://website.not-4.sale/api';
 const N4S_API_KEY = process.env.N4S_API_KEY || 'n4s-portal-2026-secure';
 
 // Activity log entry
