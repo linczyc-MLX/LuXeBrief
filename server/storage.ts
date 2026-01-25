@@ -30,7 +30,7 @@ import {
   tasteProfiles
 } from "@shared/schema";
 import { randomUUID } from "crypto";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, desc } from "drizzle-orm";
 
 export interface IStorage {
   // Users
@@ -41,6 +41,7 @@ export interface IStorage {
   // Sessions
   getSession(id: number): Promise<Session | undefined>;
   getSessionsByEmail(email: string): Promise<Session[]>;
+  getSessionByN4SProject(n4sProjectId: string, sessionType: string, principalType: string): Promise<Session | undefined>;
   createSession(session: InsertSession): Promise<Session>;
   updateSession(id: number, updates: Partial<Session>): Promise<Session | undefined>;
 
@@ -182,6 +183,21 @@ export class MySQLStorage implements IStorage {
     const result = await db.select().from(sessions).where(eq(sessions.clientEmail, email));
     // Sort by ID descending to get most recent first
     return result.sort((a: Session, b: Session) => b.id - a.id);
+  }
+
+  async getSessionByN4SProject(n4sProjectId: string, sessionType: string, principalType: string): Promise<Session | undefined> {
+    const db = await this.getDb();
+    const result = await db.select().from(sessions)
+      .where(
+        and(
+          eq(sessions.n4sProjectId, n4sProjectId),
+          eq(sessions.sessionType, sessionType),
+          eq(sessions.n4sPrincipalType, principalType)
+        )
+      )
+      .orderBy(desc(sessions.id))
+      .limit(1);
+    return result[0];
   }
 
   async createSession(insertSession: InsertSession): Promise<Session> {
@@ -644,6 +660,18 @@ export class MemStorage implements IStorage {
       .sort((a, b) => b.id - a.id);
   }
 
+  async getSessionByN4SProject(n4sProjectId: string, sessionType: string, principalType: string): Promise<Session | undefined> {
+    const allSessions = Array.from(this.sessions.values());
+    // Find matching session, sorted by most recent first
+    return allSessions
+      .filter(s =>
+        (s as any).n4sProjectId === n4sProjectId &&
+        (s as any).sessionType === sessionType &&
+        (s as any).n4sPrincipalType === principalType
+      )
+      .sort((a, b) => b.id - a.id)[0];
+  }
+
   async createSession(insertSession: InsertSession): Promise<Session> {
     const id = this.nextSessionId++;
     const session: Session = {
@@ -1008,6 +1036,7 @@ class StorageProxy implements IStorage {
   createUser(user: InsertUser) { return getStorage().then(s => s.createUser(user)); }
   getSession(id: number) { return getStorage().then(s => s.getSession(id)); }
   getSessionsByEmail(email: string) { return getStorage().then(s => s.getSessionsByEmail(email)); }
+  getSessionByN4SProject(n4sProjectId: string, sessionType: string, principalType: string) { return getStorage().then(s => s.getSessionByN4SProject(n4sProjectId, sessionType, principalType)); }
   createSession(session: InsertSession) { return getStorage().then(s => s.createSession(session)); }
   updateSession(id: number, updates: Partial<Session>) { return getStorage().then(s => s.updateSession(id, updates)); }
   getResponsesBySession(sessionId: number) { return getStorage().then(s => s.getResponsesBySession(sessionId)); }

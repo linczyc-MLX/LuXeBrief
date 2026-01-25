@@ -222,11 +222,94 @@ export class N4SDatabase {
   }
 
   /**
-   * Get PDF document
+   * Get PDF document from stored LuXeBrief sessions
+   * Reports are already generated and stored - we just need to find and return them
    */
   static async getPDF(slug: string, module: string, type: string): Promise<Buffer | null> {
-    // Placeholder - actual implementation would generate/retrieve PDF
-    return null;
+    // Only KYC module has LuXeBrief reports for now
+    if (module !== 'kyc') {
+      console.log(`[N4S API] PDF for module ${module} not yet supported`);
+      return null;
+    }
+
+    try {
+      // First get the project ID for this portal slug
+      const projects = await n4sFetch('/projects.php');
+      let n4sProjectId: string | null = null;
+
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug) {
+          n4sProjectId = project.id;
+          break;
+        }
+      }
+
+      if (!n4sProjectId) {
+        console.log(`[N4S API] No project found for slug: ${slug}`);
+        return null;
+      }
+
+      // Import the storage module to query sessions
+      const { storage } = await import('./storage');
+      const { CloudStorageService } = await import('./cloudStorage');
+
+      // Determine session type and principal type based on report type
+      let sessionType: string;
+      let principalType: string;
+
+      switch (type) {
+        case 'profile-report':
+        case 'principal-lifestyle':
+          sessionType = 'lifestyle';
+          principalType = 'principal';
+          break;
+        case 'principal-living':
+          sessionType = 'living';
+          principalType = 'principal';
+          break;
+        case 'secondary-lifestyle':
+          sessionType = 'lifestyle';
+          principalType = 'secondary';
+          break;
+        case 'secondary-living':
+          sessionType = 'living';
+          principalType = 'secondary';
+          break;
+        case 'partner-alignment':
+          // This would need special handling - for now return null
+          console.log('[N4S API] Partner alignment report not yet implemented');
+          return null;
+        default:
+          console.log(`[N4S API] Unknown report type: ${type}`);
+          return null;
+      }
+
+      // Find session with matching n4sProjectId and principal type
+      const session = await storage.getSessionByN4SProject(n4sProjectId, sessionType, principalType);
+
+      if (!session) {
+        console.log(`[N4S API] No ${sessionType} session found for project ${n4sProjectId}, ${principalType}`);
+        return null;
+      }
+
+      // Read the PDF from storage
+      const sessionPath = CloudStorageService.getSessionPath(session.clientName, session.id);
+      const pdfPath = `${sessionPath}/reports/report.pdf`;
+
+      const pdfBuffer = await CloudStorageService.readFile(pdfPath);
+
+      if (!pdfBuffer) {
+        console.log(`[N4S API] No PDF found at: ${pdfPath}`);
+        return null;
+      }
+
+      console.log(`[N4S API] Found PDF for ${type}: ${pdfPath}`);
+      return pdfBuffer;
+    } catch (error) {
+      console.error('[N4S API] getPDF error:', error);
+      return null;
+    }
   }
 
   /**
