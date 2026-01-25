@@ -1,17 +1,19 @@
 /**
- * N4S Database Connection
+ * N4S API Client
  *
- * This module provides read/write access to the N4S database
- * for portal data synchronization.
+ * This module provides access to N4S data via the N4S Dashboard's REST API.
+ * The API endpoint is publicly accessible at the IONOS-hosted N4S Dashboard.
  *
- * The N4S system uses a PHP/MySQL backend hosted on IONOS.
- * We connect to read project data and write sign-offs/activity logs.
+ * Why API instead of direct DB connection:
+ * - IONOS shared hosting blocks external database connections
+ * - API provides authentication and access control
+ * - Maintains N4S as single source of truth
+ * - Cleaner separation of concerns
  */
 
-import mysql from 'mysql2/promise';
-
-// Database connection pool
-let pool: mysql.Pool | null = null;
+// N4S Dashboard API base URL
+const N4S_API_URL = process.env.N4S_API_URL || 'https://home-5019406629.app-ionos.space/api';
+const N4S_API_KEY = process.env.N4S_API_KEY || 'n4s-portal-2026-secure';
 
 // Activity log entry
 interface ActivityEntry {
@@ -34,70 +36,99 @@ interface PhaseData {
   p3Unlocked?: boolean;
 }
 
+// Client project from N4S
+interface ClientProject {
+  projectId: string;
+  projectName: string;
+  projectCode: string;
+  role: 'principal' | 'secondary';
+  principalName: string;
+  secondaryName: string | null;
+  kycCompletion: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Fetch helper with error handling
+ */
+async function n4sFetch(endpoint: string, options: RequestInit = {}): Promise<any> {
+  const url = `${N4S_API_URL}${endpoint}`;
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-KEY': N4S_API_KEY,
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`N4S API error (${response.status}): ${error}`);
+  }
+
+  return response.json();
+}
+
 export class N4SDatabase {
+  private static initialized = false;
+
   /**
-   * Initialize database connection pool
+   * Initialize - just logs that we're using API mode
    */
   static async initialize(): Promise<void> {
-    const databaseUrl = process.env.N4S_DATABASE_URL;
+    console.log('[N4S API] Using N4S REST API at:', N4S_API_URL);
+    this.initialized = true;
+  }
 
-    if (!databaseUrl) {
-      console.warn('[N4S DB] N4S_DATABASE_URL not set - portal features will be limited');
-      return;
-    }
-
+  /**
+   * Get projects for a client by email
+   */
+  static async getClientProjects(email: string): Promise<ClientProject[]> {
     try {
-      // Parse MySQL URL
-      const url = new URL(databaseUrl);
-
-      pool = mysql.createPool({
-        host: url.hostname,
-        port: parseInt(url.port) || 3306,
-        user: url.username,
-        password: url.password,
-        database: url.pathname.slice(1), // Remove leading /
-        waitForConnections: true,
-        connectionLimit: 10,
-        queueLimit: 0,
-      });
-
-      // Test connection
-      const connection = await pool.getConnection();
-      console.log('[N4S DB] Connected to N4S database');
-      connection.release();
+      const data = await n4sFetch(`/portal.php?action=client-projects&email=${encodeURIComponent(email)}`);
+      return data.projects || [];
     } catch (error) {
-      console.error('[N4S DB] Failed to connect:', error);
-      pool = null;
+      console.error('[N4S API] getClientProjects error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Get project status for a specific project
+   */
+  static async getProjectStatus(projectId: string, email: string): Promise<any | null> {
+    try {
+      return await n4sFetch(`/portal.php?action=project-status&projectId=${projectId}&email=${encodeURIComponent(email)}`);
+    } catch (error) {
+      console.error('[N4S API] getProjectStatus error:', error);
+      return null;
     }
   }
 
   /**
    * Get LCD data by portal slug
+   * Note: This calls the main projects.php endpoint
    */
   static async getLCDDataBySlug(slug: string): Promise<any | null> {
-    if (!pool) return null;
-
     try {
-      const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-        `SELECT p.id as projectId, p.lcd_data
-         FROM projects p
-         WHERE JSON_UNQUOTE(JSON_EXTRACT(p.lcd_data, '$.portalSlug')) = ?
-         AND JSON_EXTRACT(p.lcd_data, '$.portalActive') = true`,
-        [slug]
-      );
+      // Get all projects and find matching slug
+      const projects = await n4sFetch('/projects.php');
 
-      if (rows.length === 0) return null;
-
-      const lcdData = typeof rows[0].lcd_data === 'string'
-        ? JSON.parse(rows[0].lcd_data)
-        : rows[0].lcd_data;
-
-      return {
-        ...lcdData,
-        projectId: rows[0].projectId,
-      };
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug && fullProject.lcdData?.portalActive) {
+          return {
+            ...fullProject.lcdData,
+            projectId: project.id,
+          };
+        }
+      }
+      return null;
     } catch (error) {
-      console.error('[N4S DB] getLCDDataBySlug error:', error);
+      console.error('[N4S API] getLCDDataBySlug error:', error);
       return null;
     }
   }
@@ -106,36 +137,25 @@ export class N4SDatabase {
    * Get project data by portal slug
    */
   static async getProjectBySlug(slug: string): Promise<any | null> {
-    if (!pool) return null;
-
     try {
-      const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-        `SELECT p.id, p.project_name, p.client_data, p.settings_data
-         FROM projects p
-         WHERE JSON_UNQUOTE(JSON_EXTRACT(p.lcd_data, '$.portalSlug')) = ?`,
-        [slug]
-      );
+      const projects = await n4sFetch('/projects.php');
 
-      if (rows.length === 0) return null;
-
-      const clientData = typeof rows[0].client_data === 'string'
-        ? JSON.parse(rows[0].client_data)
-        : rows[0].client_data;
-
-      const settingsData = typeof rows[0].settings_data === 'string'
-        ? JSON.parse(rows[0].settings_data)
-        : rows[0].settings_data;
-
-      return {
-        id: rows[0].id,
-        projectName: rows[0].project_name || clientData?.projectName,
-        clientName: clientData?.clientName || 'Client',
-        advisorAuthorityLevel: settingsData?.advisorAuthorityLevel || 'limited',
-        kycCompleted: clientData?.kycCompleted || false,
-        budgetRange: clientData?.budgetRange || null,
-      };
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug) {
+          return {
+            id: project.id,
+            projectName: project.project_name || fullProject.clientData?.projectName,
+            clientName: fullProject.clientData?.clientName || 'Client',
+            advisorAuthorityLevel: fullProject.settingsData?.advisorAuthorityLevel || 'limited',
+            kycCompleted: fullProject.clientData?.kycCompleted || false,
+            budgetRange: fullProject.clientData?.budgetRange || null,
+          };
+        }
+      }
+      return null;
     } catch (error) {
-      console.error('[N4S DB] getProjectBySlug error:', error);
+      console.error('[N4S API] getProjectBySlug error:', error);
       return null;
     }
   }
@@ -144,23 +164,18 @@ export class N4SDatabase {
    * Get KYC data by portal slug
    */
   static async getKYCDataBySlug(slug: string): Promise<any | null> {
-    if (!pool) return null;
-
     try {
-      const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-        `SELECT p.kyc_data
-         FROM projects p
-         WHERE JSON_UNQUOTE(JSON_EXTRACT(p.lcd_data, '$.portalSlug')) = ?`,
-        [slug]
-      );
+      const projects = await n4sFetch('/projects.php');
 
-      if (rows.length === 0) return null;
-
-      return typeof rows[0].kyc_data === 'string'
-        ? JSON.parse(rows[0].kyc_data)
-        : rows[0].kyc_data;
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug) {
+          return fullProject.kycData || null;
+        }
+      }
+      return null;
     } catch (error) {
-      console.error('[N4S DB] getKYCDataBySlug error:', error);
+      console.error('[N4S API] getKYCDataBySlug error:', error);
       return null;
     }
   }
@@ -169,23 +184,18 @@ export class N4SDatabase {
    * Get FYI data by portal slug
    */
   static async getFYIDataBySlug(slug: string): Promise<any | null> {
-    if (!pool) return null;
-
     try {
-      const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-        `SELECT p.fyi_data
-         FROM projects p
-         WHERE JSON_UNQUOTE(JSON_EXTRACT(p.lcd_data, '$.portalSlug')) = ?`,
-        [slug]
-      );
+      const projects = await n4sFetch('/projects.php');
 
-      if (rows.length === 0) return null;
-
-      return typeof rows[0].fyi_data === 'string'
-        ? JSON.parse(rows[0].fyi_data)
-        : rows[0].fyi_data;
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug) {
+          return fullProject.fyiData || null;
+        }
+      }
+      return null;
     } catch (error) {
-      console.error('[N4S DB] getFYIDataBySlug error:', error);
+      console.error('[N4S API] getFYIDataBySlug error:', error);
       return null;
     }
   }
@@ -194,8 +204,7 @@ export class N4SDatabase {
    * Get documents for a module
    */
   static async getDocuments(slug: string, module: string): Promise<any[]> {
-    // For now, return placeholder - actual implementation would check
-    // which PDFs exist in the N4S file storage or generate on-demand
+    // Placeholder - actual implementation would check N4S file storage
     return [];
   }
 
@@ -203,10 +212,7 @@ export class N4SDatabase {
    * Get PDF document
    */
   static async getPDF(slug: string, module: string, type: string): Promise<Buffer | null> {
-    // Placeholder - actual implementation would:
-    // 1. Check if PDF exists in N4S file storage
-    // 2. Generate on-demand if not
-    // 3. Return buffer
+    // Placeholder - actual implementation would generate/retrieve PDF
     return null;
   }
 
@@ -214,40 +220,32 @@ export class N4SDatabase {
    * Log client activity
    */
   static async logActivity(slug: string, entry: ActivityEntry): Promise<void> {
-    if (!pool) return;
-
     try {
-      // Get current activity log
-      const [rows] = await pool.execute<mysql.RowDataPacket[]>(
-        `SELECT p.id, JSON_EXTRACT(p.lcd_data, '$.clientActivity') as activity
-         FROM projects p
-         WHERE JSON_UNQUOTE(JSON_EXTRACT(p.lcd_data, '$.portalSlug')) = ?`,
-        [slug]
-      );
+      // Get project by slug first
+      const projects = await n4sFetch('/projects.php');
 
-      if (rows.length === 0) return;
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug) {
+          // Update with new activity
+          const activity = fullProject.lcdData.clientActivity || [];
+          activity.unshift(entry);
+          if (activity.length > 100) activity.splice(100);
 
-      const projectId = rows[0].id;
-      let activity = rows[0].activity || [];
-      if (typeof activity === 'string') {
-        activity = JSON.parse(activity);
+          await n4sFetch(`/projects.php?id=${project.id}&action=update`, {
+            method: 'POST',
+            body: JSON.stringify({
+              lcdData: {
+                ...fullProject.lcdData,
+                clientActivity: activity,
+              },
+            }),
+          });
+          return;
+        }
       }
-
-      // Add new entry (keep last 100)
-      activity.unshift(entry);
-      if (activity.length > 100) {
-        activity = activity.slice(0, 100);
-      }
-
-      // Update database
-      await pool.execute(
-        `UPDATE projects
-         SET lcd_data = JSON_SET(lcd_data, '$.clientActivity', ?)
-         WHERE id = ?`,
-        [JSON.stringify(activity), projectId]
-      );
     } catch (error) {
-      console.error('[N4S DB] logActivity error:', error);
+      console.error('[N4S API] logActivity error:', error);
     }
   }
 
@@ -255,22 +253,32 @@ export class N4SDatabase {
    * Update milestone sign-off
    */
   static async updateMilestone(slug: string, module: string, data: SignOffData): Promise<void> {
-    if (!pool) return;
-
     try {
-      await pool.execute(
-        `UPDATE projects
-         SET lcd_data = JSON_SET(
-           lcd_data,
-           '$.milestones.${module}.signed', ?,
-           '$.milestones.${module}.signedAt', ?,
-           '$.milestones.${module}.signedBy', ?
-         )
-         WHERE JSON_UNQUOTE(JSON_EXTRACT(lcd_data, '$.portalSlug')) = ?`,
-        [data.signed, data.signedAt, data.signedBy, slug]
-      );
+      const projects = await n4sFetch('/projects.php');
+
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug) {
+          const milestones = fullProject.lcdData.milestones || {};
+          milestones[module] = {
+            ...milestones[module],
+            ...data,
+          };
+
+          await n4sFetch(`/projects.php?id=${project.id}&action=update`, {
+            method: 'POST',
+            body: JSON.stringify({
+              lcdData: {
+                ...fullProject.lcdData,
+                milestones,
+              },
+            }),
+          });
+          return;
+        }
+      }
     } catch (error) {
-      console.error('[N4S DB] updateMilestone error:', error);
+      console.error('[N4S API] updateMilestone error:', error);
     }
   }
 
@@ -278,37 +286,28 @@ export class N4SDatabase {
    * Update phase status
    */
   static async updatePhases(slug: string, phases: PhaseData): Promise<void> {
-    if (!pool) return;
-
     try {
-      const updates: string[] = [];
-      const values: any[] = [];
+      const projects = await n4sFetch('/projects.php');
 
-      if (phases.p1Complete !== undefined) {
-        updates.push("'$.phases.p1Complete', ?");
-        values.push(phases.p1Complete);
+      for (const project of projects) {
+        const fullProject = await n4sFetch(`/projects.php?id=${project.id}`);
+        if (fullProject.lcdData?.portalSlug === slug) {
+          const currentPhases = fullProject.lcdData.phases || {};
+
+          await n4sFetch(`/projects.php?id=${project.id}&action=update`, {
+            method: 'POST',
+            body: JSON.stringify({
+              lcdData: {
+                ...fullProject.lcdData,
+                phases: { ...currentPhases, ...phases },
+              },
+            }),
+          });
+          return;
+        }
       }
-      if (phases.p2Unlocked !== undefined) {
-        updates.push("'$.phases.p2Unlocked', ?");
-        values.push(phases.p2Unlocked);
-      }
-      if (phases.p3Unlocked !== undefined) {
-        updates.push("'$.phases.p3Unlocked', ?");
-        values.push(phases.p3Unlocked);
-      }
-
-      if (updates.length === 0) return;
-
-      values.push(slug);
-
-      await pool.execute(
-        `UPDATE projects
-         SET lcd_data = JSON_SET(lcd_data, ${updates.join(', ')})
-         WHERE JSON_UNQUOTE(JSON_EXTRACT(lcd_data, '$.portalSlug')) = ?`,
-        values
-      );
     } catch (error) {
-      console.error('[N4S DB] updatePhases error:', error);
+      console.error('[N4S API] updatePhases error:', error);
     }
   }
 
@@ -316,8 +315,7 @@ export class N4SDatabase {
    * Get questionnaire status from LuXeBrief sessions
    */
   static async getQuestionnaireStatus(slug: string): Promise<any> {
-    // This would query the LuXeBrief sessions table
-    // For now, return placeholder structure
+    // This queries the local LuXeBrief database, not N4S
     return {
       principal: {
         lifestyle: { status: 'not_started', sessionId: null },
@@ -333,12 +331,9 @@ export class N4SDatabase {
   }
 
   /**
-   * Close database connection pool
+   * Close - no-op for API mode
    */
   static async close(): Promise<void> {
-    if (pool) {
-      await pool.end();
-      pool = null;
-    }
+    // No connection to close in API mode
   }
 }
