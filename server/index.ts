@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { registerPortalRoutes } from "./portalRoutes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { getStorage } from "./storage";
@@ -100,6 +101,9 @@ app.use((req, res, next) => {
 
   // Verify SMTP connection for email sending
   await verifySmtpConnection();
+
+  // Register portal routes for client dashboard (LCD)
+  await registerPortalRoutes(app);
 
   await registerRoutes(httpServer, app);
 
