@@ -652,6 +652,8 @@ export class N4SDatabase {
       const pageCount = doc.bufferedPageRange().count;
       for (let i = 0; i < pageCount; i++) {
         doc.switchToPage(i);
+        // Save graphics state before footer writing
+        doc.save();
         // Footer - use separate text calls with lineBreak: false to prevent extra pages
         doc.fontSize(8).fillColor(N4S_MUTED);
         doc.text('© 2026 Not4Sale LLC', margin, pageHeight - 30, { lineBreak: false });
@@ -660,6 +662,8 @@ export class N4SDatabase {
           align: 'right',
           lineBreak: false
         });
+        // Restore graphics state to prevent cursor position from affecting next page
+        doc.restore();
       }
 
       doc.end();

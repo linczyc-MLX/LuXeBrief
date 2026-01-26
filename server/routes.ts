@@ -1353,6 +1353,8 @@ async function generatePdfBuffer(
     const pageCount = doc.bufferedPageRange().count;
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
+      // Save graphics state before footer writing
+      doc.save();
       // Footer - use separate text calls with lineBreak: false to prevent extra pages
       doc.fontSize(8).fillColor(N4S_MUTED);
       doc.text(`© 2026 Not4Sale LLC`, margin, pageHeight - 30, { lineBreak: false });
@@ -1361,6 +1363,8 @@ async function generatePdfBuffer(
         align: 'right',
         lineBreak: false
       });
+      // Restore graphics state to prevent cursor position from affecting next page
+      doc.restore();
     }
   };
 
@@ -1536,6 +1540,8 @@ async function generateLivingPdfBuffer(
     const pageCount = doc.bufferedPageRange().count;
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
+      // Save graphics state before footer writing
+      doc.save();
       // Footer - use separate text calls with lineBreak: false to prevent extra pages
       doc.fontSize(8).fillColor(N4S_MUTED);
       doc.text(`© 2026 Not4Sale LLC`, margin, pageHeight - 30, { lineBreak: false });
@@ -1544,6 +1550,8 @@ async function generateLivingPdfBuffer(
         align: 'right',
         lineBreak: false
       });
+      // Restore graphics state to prevent cursor position from affecting next page
+      doc.restore();
     }
   };
 
