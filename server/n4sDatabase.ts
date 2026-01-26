@@ -258,44 +258,73 @@ export class N4SDatabase {
         return null;
       }
 
-      // Extract the LuXeBrief session ID from kycData based on report type
+      /**
+       * Document Types:
+       *
+       * RECORD Documents (immutable, dated, stored at completion):
+       *   - Lifestyle Questionnaire: Completed once, timestamped, stored as record
+       *   - Living Questionnaire: Completed once, timestamped, stored as record
+       *   - Taste Exploration: Completed once, timestamped, stored as record
+       *   → Use /stored-pdf endpoint to retrieve the original record
+       *   → If retaken, new session created, old archived
+       *
+       * LIVE Documents (generated on-demand from current data):
+       *   - KYC Profile Report: Rendered each time from current kycData
+       *   - Partner Alignment: Rendered each time from current data
+       *   → Generated fresh with current date on each request
+       */
+
       const kycData = projectData.kycData || {};
       let sessionId: number | null = null;
 
       switch (type) {
+        // ========== LIVE DOCUMENTS (generated on-demand) ==========
         case 'profile-report':
-          // Generate KYC Profile Report PDF on-demand
-          console.log('[N4S API] Generating KYC Profile Report PDF');
+          // LIVE: KYC Profile Report - generated from current kycData each time
+          console.log('[N4S API] LIVE Document: Generating KYC Profile Report PDF on-demand');
           return await this.generateKYCProfileReport(projectData);
 
+        case 'partner-alignment':
+          // LIVE: Partner Alignment Report - generated from current data
+          console.log('[N4S API] Partner alignment report not yet implemented');
+          return null;
+
+        // ========== RECORD DOCUMENTS (retrieve stored, immutable) ==========
         case 'principal-lifestyle':
-          // Principal's Lifestyle questionnaire session
+          // RECORD: Principal's Lifestyle questionnaire - retrieve stored record
           sessionId = kycData.principal?.lifestyleLiving?.luxeBriefSessionId;
-          console.log(`[N4S API] Looking for principal lifestyle session ID in kycData.principal.lifestyleLiving.luxeBriefSessionId: ${sessionId}`);
+          console.log(`[N4S API] RECORD Document: Principal Lifestyle, session ${sessionId}`);
           break;
 
         case 'principal-living':
-          // Principal's Living questionnaire session
+          // RECORD: Principal's Living questionnaire - retrieve stored record
           sessionId = kycData.principal?.lifestyleLiving?.luxeLivingSessionId;
-          console.log(`[N4S API] Looking for principal living session ID in kycData.principal.lifestyleLiving.luxeLivingSessionId: ${sessionId}`);
+          console.log(`[N4S API] RECORD Document: Principal Living, session ${sessionId}`);
           break;
 
         case 'secondary-lifestyle':
-          // Secondary's Lifestyle questionnaire session
+          // RECORD: Secondary's Lifestyle questionnaire - retrieve stored record
           sessionId = kycData.secondary?.lifestyleLiving?.luxeBriefSessionId;
-          console.log(`[N4S API] Looking for secondary lifestyle session ID in kycData.secondary.lifestyleLiving.luxeBriefSessionId: ${sessionId}`);
+          console.log(`[N4S API] RECORD Document: Secondary Lifestyle, session ${sessionId}`);
           break;
 
         case 'secondary-living':
-          // Secondary's Living questionnaire session
+          // RECORD: Secondary's Living questionnaire - retrieve stored record
           sessionId = kycData.secondary?.lifestyleLiving?.luxeLivingSessionId;
-          console.log(`[N4S API] Looking for secondary living session ID in kycData.secondary.lifestyleLiving.luxeLivingSessionId: ${sessionId}`);
+          console.log(`[N4S API] RECORD Document: Secondary Living, session ${sessionId}`);
           break;
 
-        case 'partner-alignment':
-          // Partner alignment is calculated/generated client-side
-          console.log('[N4S API] Partner alignment report not yet implemented');
-          return null;
+        case 'principal-taste':
+          // RECORD: Principal's Taste Exploration - retrieve stored record
+          sessionId = kycData.principal?.designIdentity?.tasteSessionId;
+          console.log(`[N4S API] RECORD Document: Principal Taste, session ${sessionId}`);
+          break;
+
+        case 'secondary-taste':
+          // RECORD: Secondary's Taste Exploration - retrieve stored record
+          sessionId = kycData.secondary?.designIdentity?.tasteSessionId;
+          console.log(`[N4S API] RECORD Document: Secondary Taste, session ${sessionId}`);
+          break;
 
         default:
           console.log(`[N4S API] Unknown report type: ${type}`);
@@ -303,30 +332,39 @@ export class N4SDatabase {
       }
 
       if (!sessionId) {
-        console.log(`[N4S API] No session ID found for ${type} in kycData`);
+        console.log(`[N4S API] No session ID found for RECORD document type: ${type}`);
         console.log(`[N4S API] kycData.principal.lifestyleLiving:`, JSON.stringify(kycData.principal?.lifestyleLiving || {}, null, 2));
         console.log(`[N4S API] kycData.secondary.lifestyleLiving:`, JSON.stringify(kycData.secondary?.lifestyleLiving || {}, null, 2));
         return null;
       }
 
-      // Fetch PDF from LuXeBrief's export endpoint (generates on-demand)
-      // This generates the PDF dynamically from the session data
+      // RECORD Documents: Retrieve the stored PDF created at questionnaire completion
+      // Using /stored-pdf endpoint which returns the immutable record, not /export/pdf which regenerates
       const LUXEBRIEF_URL = process.env.LUXEBRIEF_URL || 'https://luxebrief.not-4.sale';
-      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/export/pdf`;
+      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/stored-pdf`;
 
-      console.log(`[N4S API] Fetching PDF from LuXeBrief export: ${pdfUrl}`);
+      console.log(`[N4S API] Fetching RECORD PDF from: ${pdfUrl}`);
 
       const response = await fetch(pdfUrl);
 
       if (!response.ok) {
         console.log(`[N4S API] LuXeBrief returned ${response.status}: ${response.statusText}`);
-        return null;
+        // Fallback: try export/pdf if stored-pdf not available (for backwards compatibility)
+        console.log(`[N4S API] Attempting fallback to /export/pdf`);
+        const fallbackUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/export/pdf`;
+        const fallbackResponse = await fetch(fallbackUrl);
+        if (!fallbackResponse.ok) {
+          console.log(`[N4S API] Fallback also failed: ${fallbackResponse.status}`);
+          return null;
+        }
+        const fallbackBuffer = await fallbackResponse.arrayBuffer();
+        return Buffer.from(fallbackBuffer);
       }
 
       const arrayBuffer = await response.arrayBuffer();
       const pdfBuffer = Buffer.from(arrayBuffer);
 
-      console.log(`[N4S API] Successfully retrieved PDF for ${type}, size: ${pdfBuffer.length} bytes`);
+      console.log(`[N4S API] Successfully retrieved RECORD PDF for ${type}, size: ${pdfBuffer.length} bytes`);
       return pdfBuffer;
 
     } catch (error) {
