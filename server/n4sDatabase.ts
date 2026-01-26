@@ -649,21 +649,32 @@ export class N4SDatabase {
       }
 
       // ========== Add Page Numbers ==========
-      const pageCount = doc.bufferedPageRange().count;
-      for (let i = 0; i < pageCount; i++) {
+      const range = doc.bufferedPageRange();
+      for (let i = range.start; i < range.start + range.count; i++) {
         doc.switchToPage(i);
-        // Save graphics state before footer writing
-        doc.save();
-        // Footer - use separate text calls with lineBreak: false to prevent extra pages
+
+        // Save cursor position to prevent page overflow detection
+        const oldY = doc.y;
+        const oldX = doc.x;
+
+        // Footer - copyright on left
         doc.fontSize(8).fillColor(N4S_MUTED);
-        doc.text('© 2026 Not4Sale LLC', margin, pageHeight - 30, { lineBreak: false });
-        doc.text(`Page ${i + 1} of ${pageCount}`, pageWidth - margin - 80, pageHeight - 30, {
+        doc.text('© 2026 Not4Sale LLC', margin, pageHeight - 30, {
+          lineBreak: false,
+          continued: false
+        });
+
+        // Page number on right
+        doc.text(`Page ${i + 1} of ${range.count}`, pageWidth - margin - 80, pageHeight - 30, {
           width: 80,
           align: 'right',
-          lineBreak: false
+          lineBreak: false,
+          continued: false
         });
-        // Restore graphics state to prevent cursor position from affecting next page
-        doc.restore();
+
+        // Reset cursor position
+        doc.x = oldX;
+        doc.y = oldY;
       }
 
       doc.end();
