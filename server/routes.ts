@@ -918,6 +918,39 @@ ${responseContext}`
     }
   });
 
+  // Update session (admin - can update sessionType, status, etc.)
+  app.patch("/api/admin/sessions/:id", adminAuth, async (req: Request, res: ExpressResponse) => {
+    try {
+      const id = parseInt(req.params.id as string);
+      const { sessionType, status } = req.body;
+
+      const updates: Record<string, any> = {};
+
+      if (sessionType && ['lifestyle', 'living', 'taste'].includes(sessionType)) {
+        updates.sessionType = sessionType;
+      }
+
+      if (status && ['in_progress', 'completed'].includes(status)) {
+        updates.status = status;
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: "No valid updates provided. Allowed: sessionType, status" });
+      }
+
+      const session = await storage.updateSession(id, updates);
+
+      if (!session) {
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      res.json(session);
+    } catch (error) {
+      console.error("Error updating session:", error);
+      res.status(500).json({ error: "Failed to update session" });
+    }
+  });
+
   // ===== PDF EXPORT =====
 
   app.get("/api/sessions/:id/export/pdf", async (req: Request, res: ExpressResponse) => {
