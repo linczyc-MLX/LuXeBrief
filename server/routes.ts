@@ -975,6 +975,66 @@ ${responseContext}`
     }
   });
 
+  // Serve stored PDF directly from file system
+  // This endpoint serves the PDF that was saved during session completion
+  // Path: {DATA_DIR}/briefings/{client-name}-{sessionId}/reports/report.pdf
+  app.get("/api/sessions/:id/stored-pdf", async (req: Request, res: ExpressResponse) => {
+    try {
+      const id = parseInt(req.params.id as string);
+      const session = await storage.getSession(id);
+
+      if (!session) {
+        console.log(`[Stored PDF] Session ${id} not found`);
+        return res.status(404).json({ error: "Session not found" });
+      }
+
+      // Get the stored PDF path from the report record
+      const report = await storage.getReport(id);
+
+      if (report?.pdfFilePath) {
+        // Serve from stored file path
+        console.log(`[Stored PDF] Serving from pdfFilePath: ${report.pdfFilePath}`);
+        const pdfBuffer = await CloudStorageService.readFile(report.pdfFilePath);
+
+        if (pdfBuffer) {
+          const clientSlug = session.clientName.replace(/[^a-zA-Z0-9]/g, "_");
+          const sessionType = (session as any).sessionType || 'lifestyle';
+          const typeLabel = sessionType === 'living' ? 'Living' : 'Lifestyle';
+          const filename = `LuXeBrief-${typeLabel}-${clientSlug}.pdf`;
+
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+          return res.send(pdfBuffer);
+        }
+      }
+
+      // Fallback: construct path and try to read directly
+      console.log(`[Stored PDF] No pdfFilePath in report, trying constructed path`);
+      const storedPath = CloudStorageService.getSessionPath(session.clientName, id);
+      const pdfPath = `${storedPath}/reports/report.pdf`;
+
+      console.log(`[Stored PDF] Trying path: ${pdfPath}`);
+      const pdfBuffer = await CloudStorageService.readFile(pdfPath);
+
+      if (!pdfBuffer) {
+        console.log(`[Stored PDF] No PDF found at ${pdfPath}`);
+        return res.status(404).json({ error: "Stored PDF not found" });
+      }
+
+      const clientSlug = session.clientName.replace(/[^a-zA-Z0-9]/g, "_");
+      const sessionType = (session as any).sessionType || 'lifestyle';
+      const typeLabel = sessionType === 'living' ? 'Living' : 'Lifestyle';
+      const filename = `LuXeBrief-${typeLabel}-${clientSlug}.pdf`;
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+      res.send(pdfBuffer);
+    } catch (error) {
+      console.error("[Stored PDF] Error:", error);
+      res.status(500).json({ error: "Failed to retrieve stored PDF" });
+    }
+  });
+
   // ===== TASTE EXPLORATION ROUTES =====
 
   // Get taste session by access token (for client questionnaire)

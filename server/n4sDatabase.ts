@@ -309,11 +309,12 @@ export class N4SDatabase {
         return null;
       }
 
-      // Proxy the PDF from LuXeBrief's export endpoint (same endpoint N4S uses in P1.A.6)
-      const LUXEBRIEF_URL = 'https://luxebrief.not-4.sale';
-      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/export/pdf`;
+      // Fetch the stored PDF from LuXeBrief's stored-pdf endpoint
+      // This serves the PDF that was saved when the session was completed
+      const LUXEBRIEF_URL = process.env.LUXEBRIEF_URL || 'https://luxebrief.not-4.sale';
+      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/stored-pdf`;
 
-      console.log(`[N4S API] Fetching PDF from LuXeBrief: ${pdfUrl}`);
+      console.log(`[N4S API] Fetching stored PDF from LuXeBrief: ${pdfUrl}`);
 
       const response = await fetch(pdfUrl);
 
