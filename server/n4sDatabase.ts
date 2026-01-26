@@ -309,12 +309,12 @@ export class N4SDatabase {
         return null;
       }
 
-      // Fetch the stored PDF from LuXeBrief's stored-pdf endpoint
-      // This serves the PDF that was saved when the session was completed
+      // Fetch PDF from LuXeBrief's export endpoint (generates on-demand)
+      // This generates the PDF dynamically from the session data
       const LUXEBRIEF_URL = process.env.LUXEBRIEF_URL || 'https://luxebrief.not-4.sale';
-      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/stored-pdf`;
+      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/export/pdf`;
 
-      console.log(`[N4S API] Fetching stored PDF from LuXeBrief: ${pdfUrl}`);
+      console.log(`[N4S API] Fetching PDF from LuXeBrief export: ${pdfUrl}`);
 
       const response = await fetch(pdfUrl);
 
