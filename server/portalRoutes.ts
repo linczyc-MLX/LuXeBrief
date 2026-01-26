@@ -247,12 +247,16 @@ export async function registerPortalRoutes(app: Express): Promise<void> {
           kycCompleted: projectData.kycCompleted || false,
           deliverables: {
             profileReport: visibility.kyc.profileReport && projectData.kycCompleted,
-            // Separate Lifestyle and Living reports for Principal
-            principalLifestyle: visibility.kyc.luxebriefPrincipal && projectData.kycCompleted,
-            principalLiving: visibility.kyc.luxebriefPrincipal && projectData.kycCompleted,
-            // Separate Lifestyle and Living reports for Secondary (if applicable)
-            secondaryLifestyle: visibility.kyc.luxebriefSecondary && kycData?.secondary,
-            secondaryLiving: visibility.kyc.luxebriefSecondary && kycData?.secondary,
+            // Separate Lifestyle and Living reports for Principal - check if session completed
+            principalLifestyle: visibility.kyc.luxebriefPrincipal &&
+              kycData?.principal?.lifestyleLiving?.luxeBriefStatus === 'completed',
+            principalLiving: visibility.kyc.luxebriefPrincipal &&
+              kycData?.principal?.lifestyleLiving?.luxeLivingStatus === 'completed',
+            // Separate Lifestyle and Living reports for Secondary - only show if actually completed
+            secondaryLifestyle: visibility.kyc.luxebriefSecondary &&
+              kycData?.secondary?.lifestyleLiving?.luxeBriefStatus === 'completed',
+            secondaryLiving: visibility.kyc.luxebriefSecondary &&
+              kycData?.secondary?.lifestyleLiving?.luxeLivingStatus === 'completed',
             partnerAlignment: visibility.kyc.partnerAlignment && kycData?.partnerAlignmentScore,
           },
           // PDF URLs for each deliverable
