@@ -1353,22 +1353,14 @@ async function generatePdfBuffer(
     const pageCount = doc.bufferedPageRange().count;
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
-
-      // Footer: © 2026 Not4Sale LLC | Page X of Y
-      doc.fontSize(8)
-         .fillColor(N4S_MUTED)
-         .text(
-           `© 2026 Not4Sale LLC`,
-           margin,
-           pageHeight - 30,
-           { continued: true, width: contentWidth / 2 }
-         )
-         .text(
-           `Page ${i + 1} of ${pageCount}`,
-           margin + contentWidth / 2,
-           pageHeight - 30,
-           { align: 'right', width: contentWidth / 2 }
-         );
+      // Footer - use separate text calls with lineBreak: false to prevent extra pages
+      doc.fontSize(8).fillColor(N4S_MUTED);
+      doc.text(`© 2026 Not4Sale LLC`, margin, pageHeight - 30, { lineBreak: false });
+      doc.text(`Page ${i + 1} of ${pageCount}`, pageWidth - margin - 80, pageHeight - 30, {
+        width: 80,
+        align: 'right',
+        lineBreak: false
+      });
     }
   };
 
@@ -1544,10 +1536,14 @@ async function generateLivingPdfBuffer(
     const pageCount = doc.bufferedPageRange().count;
     for (let i = 0; i < pageCount; i++) {
       doc.switchToPage(i);
-      doc.fontSize(8)
-         .fillColor(N4S_MUTED)
-         .text(`© 2026 Not4Sale LLC`, margin, pageHeight - 30, { continued: true, width: contentWidth / 2 })
-         .text(`Page ${i + 1} of ${pageCount}`, margin + contentWidth / 2, pageHeight - 30, { align: 'right', width: contentWidth / 2 });
+      // Footer - use separate text calls with lineBreak: false to prevent extra pages
+      doc.fontSize(8).fillColor(N4S_MUTED);
+      doc.text(`© 2026 Not4Sale LLC`, margin, pageHeight - 30, { lineBreak: false });
+      doc.text(`Page ${i + 1} of ${pageCount}`, pageWidth - margin - 80, pageHeight - 30, {
+        width: 80,
+        align: 'right',
+        lineBreak: false
+      });
     }
   };
 
