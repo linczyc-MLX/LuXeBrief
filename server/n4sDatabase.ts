@@ -338,10 +338,9 @@ export class N4SDatabase {
         return null;
       }
 
-      // RECORD Documents: Retrieve the stored PDF created at questionnaire completion
-      // Using /stored-pdf endpoint which returns the immutable record, not /export/pdf which regenerates
+      // RECORD Documents: Fetch from LuXeBrief export endpoint
       const LUXEBRIEF_URL = process.env.LUXEBRIEF_URL || 'https://luxebrief.not-4.sale';
-      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/stored-pdf`;
+      const pdfUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/export/pdf`;
 
       console.log(`[N4S API] Fetching RECORD PDF from: ${pdfUrl}`);
 
@@ -349,16 +348,7 @@ export class N4SDatabase {
 
       if (!response.ok) {
         console.log(`[N4S API] LuXeBrief returned ${response.status}: ${response.statusText}`);
-        // Fallback: try export/pdf if stored-pdf not available (for backwards compatibility)
-        console.log(`[N4S API] Attempting fallback to /export/pdf`);
-        const fallbackUrl = `${LUXEBRIEF_URL}/api/sessions/${sessionId}/export/pdf`;
-        const fallbackResponse = await fetch(fallbackUrl);
-        if (!fallbackResponse.ok) {
-          console.log(`[N4S API] Fallback also failed: ${fallbackResponse.status}`);
-          return null;
-        }
-        const fallbackBuffer = await fallbackResponse.arrayBuffer();
-        return Buffer.from(fallbackBuffer);
+        return null;
       }
 
       const arrayBuffer = await response.arrayBuffer();
@@ -469,7 +459,12 @@ export class N4SDatabase {
   }
 
   /**
-   * Generate KYC Profile Report PDF
+   * Generate comprehensive KYC Profile Report PDF
+   *
+   * This matches the N4S dashboard's KYCReportGenerator.js output:
+   * - 5 pages: Client Profile, Budget Parameters, Lifestyle & Working, Space Requirements, Design Identity
+   * - Full extraction of all kycData sections
+   * - N4S brand styling (Navy, Gold, KYC Blue)
    */
   private static async generateKYCProfileReport(projectData: any): Promise<Buffer> {
     // Dynamic import of PDFKit
@@ -489,12 +484,16 @@ export class N4SDatabase {
       const pageWidth = doc.page.width;
       const pageHeight = doc.page.height;
       const margin = 50;
+      const contentWidth = pageWidth - (margin * 2);
 
       // N4S Brand Colors
       const N4S_NAVY = '#1e3a5f';
       const N4S_GOLD = '#c9a227';
+      const N4S_KYC_BLUE = '#315098';
       const N4S_TEXT = '#1a1a1a';
       const N4S_MUTED = '#6b6b6b';
+      const N4S_ACCENT_LIGHT = '#f5f0e8';
+      const N4S_BORDER = '#e5e5e0';
 
       const generatedDate = new Date().toLocaleDateString('en-US', {
         year: 'numeric',
@@ -502,180 +501,492 @@ export class N4SDatabase {
         day: 'numeric'
       });
 
-      // Get project and KYC data
+      // ========== EXTRACT ALL KYC DATA ==========
       const clientData = projectData.clientData || {};
       const kycData = projectData.kycData || {};
       const principal = kycData.principal || {};
-      const secondary = kycData.secondary || {};
+      const secondary = kycData.secondary || null;
 
-      const projectName = clientData.projectName || 'Luxury Residence Project';
+      // P1.A.1 - Portfolio Context
       const portfolioContext = principal.portfolioContext || {};
+      const principalFirstName = portfolioContext.principalFirstName || '';
+      const principalLastName = portfolioContext.principalLastName || '';
+      const clientName = [principalFirstName, principalLastName].filter(Boolean).join(' ') || 'Client';
+      const secondaryFirstName = portfolioContext.secondaryFirstName || '';
+      const secondaryLastName = portfolioContext.secondaryLastName || '';
+      const secondaryName = [secondaryFirstName, secondaryLastName].filter(Boolean).join(' ') || null;
+      const thisPropertyRole = portfolioContext.thisPropertyRole;
+      const investmentHorizon = portfolioContext.investmentHorizon;
+      const landAcquisitionCost = portfolioContext.landAcquisitionCost || 0;
+
+      // P1.A.2 - Family & Household
+      const familyHousehold = principal.familyHousehold || {};
+      const familyMembers = familyHousehold.familyMembers || [];
+      const adultsCount = secondary ? 2 : (secondaryName ? 2 : 1);
+      const childrenCount = familyMembers.filter((m: any) =>
+        m.role === 'teenager' || m.role === 'child' || m.role === 'young-child'
+      ).length;
+      const staffingLevel = familyHousehold.staffingLevel;
+
+      // P1.A.3 - Project Parameters
+      const projectParameters = principal.projectParameters || {};
+      const projectName = projectParameters.projectName || clientData.projectName || 'Luxury Residence Project';
+      const bedroomCount = projectParameters.bedroomCount;
+      const targetGSF = projectParameters.targetGSF;
+
+      // P1.A.4 - Budget Framework
+      const budgetFramework = principal.budgetFramework || {};
+      const totalProjectBudget = budgetFramework.totalProjectBudget || 0;
+      const interiorBudget = budgetFramework.interiorBudget || 0;
+      const grandTotal = landAcquisitionCost + totalProjectBudget;
+      const interiorQualityTier = budgetFramework.interiorQualityTier;
+
+      // P1.A.5 - Design Identity
       const designIdentity = principal.designIdentity || {};
+      const principalTasteResults = designIdentity.principalTasteResults || null;
+      const secondaryTasteResults = designIdentity.secondaryTasteResults || null;
+      const hasPrincipalTaste = !!(principalTasteResults?.completedAt);
+      const hasSecondaryTaste = !!(secondaryTasteResults?.completedAt);
+
+      // P1.A.6 - Lifestyle & Living
       const lifestyleLiving = principal.lifestyleLiving || {};
+      const workFromHome = lifestyleLiving.workFromHome;
+      const dedicatedOffices = lifestyleLiving.wfhPeopleCount || 0;
+      const entertainingStyle = lifestyleLiving.entertainingStyle;
+      const entertainingFrequency = lifestyleLiving.entertainingFrequency;
+      const hobbies = lifestyleLiving.hobbies || [];
+      const wellnessPriorities = lifestyleLiving.wellnessPriorities || [];
 
-      const principalName = `${portfolioContext.principalFirstName || ''} ${portfolioContext.principalLastName || ''}`.trim() || 'Principal';
-      const secondaryName = `${portfolioContext.secondaryFirstName || ''} ${portfolioContext.secondaryLastName || ''}`.trim();
+      // P1.A.7 - Space Requirements
+      const spaceRequirements = principal.spaceRequirements || {};
+      const mustHaveSpaces = spaceRequirements.mustHaveSpaces || [];
+      const niceToHaveSpaces = spaceRequirements.niceToHaveSpaces || [];
 
-      // ========== PAGE 1: Title Page ==========
+      // P1.A.8 - Cultural Context
+      const culturalContext = principal.culturalContext || {};
 
-      // Navy header bar
-      doc.rect(0, 0, pageWidth, 60).fill(N4S_NAVY);
-      doc.fontSize(14).fillColor('#ffffff').text('N4S', margin, 22);
-      doc.fontSize(9).fillColor('#ffffff').text('Luxury Residential Advisory', margin, 38);
-      doc.fontSize(10).fillColor('#ffffff').text('KYC Profile Report', pageWidth - margin - 150, 22, { width: 150, align: 'right' });
-      doc.fontSize(9).fillColor('#ffffff').text(generatedDate, pageWidth - margin - 150, 38, { width: 150, align: 'right' });
+      // P1.A.9 - Working Preferences
+      const workingPreferences = principal.workingPreferences || {};
 
-      doc.y = 100;
+      // ========== HELPER FUNCTIONS ==========
 
-      // Project and Client info
-      doc.fontSize(11).fillColor(N4S_TEXT).font('Helvetica-Bold').text('Project: ', margin, doc.y, { continued: true });
-      doc.font('Helvetica').text(projectName);
-      doc.moveDown(0.3);
-      doc.font('Helvetica-Bold').text('Client: ', { continued: true });
-      doc.font('Helvetica').text(principalName);
+      const formatCurrency = (value: number) => {
+        if (!value && value !== 0) return 'Not specified';
+        return new Intl.NumberFormat('en-US', {
+          style: 'currency',
+          currency: 'USD',
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 0,
+        }).format(value);
+      };
+
+      const getPropertyRoleLabel = (role: string) => {
+        const labels: Record<string, string> = {
+          'primary': 'Primary Residence',
+          'secondary': 'Secondary/Vacation Home',
+          'vacation': 'Vacation Property',
+          'investment': 'Investment Property',
+          'legacy': 'Legacy/Generational Asset',
+        };
+        return labels[role] || role || 'Not specified';
+      };
+
+      const getInvestmentHorizonLabel = (horizon: string) => {
+        const labels: Record<string, string> = {
+          'forever': 'Forever Home',
+          '10yr': '10+ Years',
+          '5yr': '5-10 Years',
+          'generational': 'Generational (Multi-decade)',
+        };
+        return labels[horizon] || horizon || 'Not specified';
+      };
+
+      const getStaffingLevelLabel = (level: string) => {
+        const labels: Record<string, string> = {
+          'none': 'No Staff',
+          'part_time': 'Part-Time Staff',
+          'full_time': 'Full-Time Staff',
+          'live_in': 'Live-In Staff',
+        };
+        return labels[level] || level || 'Not specified';
+      };
+
+      const getQualityTierLabel = (tier: string) => {
+        const labels: Record<string, string> = {
+          'select': 'I - Select: The Curated Standard',
+          'reserve': 'II - Reserve: Exceptional Materials',
+          'signature': 'III - Signature: Bespoke Design',
+          'legacy': 'IV - Legacy: Enduring Heritage',
+        };
+        return labels[tier] || tier || 'Not specified';
+      };
+
+      const getWorkFromHomeLabel = (value: string) => {
+        const labels: Record<string, string> = {
+          'never': 'Never',
+          'sometimes': 'Sometimes (1-2 days/week)',
+          'often': 'Often (3-4 days/week)',
+          'always': 'Always (Full Remote)',
+        };
+        return labels[value] || value || 'Not specified';
+      };
+
+      const getEntertainingStyleLabel = (value: string) => {
+        const labels: Record<string, string> = {
+          'formal': 'Formal (Seated dinners)',
+          'casual': 'Casual (Relaxed gatherings)',
+          'both': 'Both Formal & Casual',
+        };
+        return labels[value] || value || 'Not specified';
+      };
+
+      const getEntertainingFrequencyLabel = (value: string) => {
+        const labels: Record<string, string> = {
+          'rarely': 'Rarely (Few times/year)',
+          'monthly': 'Monthly',
+          'weekly': 'Weekly',
+          'daily': 'Daily/Constantly',
+        };
+        return labels[value] || value || 'Not specified';
+      };
+
+      const getSpaceLabel = (spaceCode: string) => {
+        const labels: Record<string, string> = {
+          'primary-suite': 'Primary Suite',
+          'secondary-suites': 'Guest Suites',
+          'kids-bedrooms': "Children's Bedrooms",
+          'great-room': 'Great Room/Living',
+          'formal-living': 'Formal Living Room',
+          'family-room': 'Family Room',
+          'formal-dining': 'Formal Dining',
+          'casual-dining': 'Casual Dining/Breakfast',
+          'chef-kitchen': "Chef's Kitchen",
+          'catering-kitchen': 'Catering Kitchen',
+          'home-office': 'Home Office',
+          'library': 'Library',
+          'media-room': 'Media Room/Theater',
+          'game-room': 'Game Room',
+          'wine-cellar': 'Wine Cellar',
+          'gym': 'Home Gym',
+          'spa-wellness': 'Spa/Wellness Suite',
+          'pool-indoor': 'Indoor Pool',
+          'sauna': 'Sauna',
+          'steam-room': 'Steam Room',
+          'staff-quarters': 'Staff Quarters',
+          'mudroom': 'Mudroom',
+          'laundry': 'Laundry Room',
+          'art-gallery': 'Art Gallery',
+          'music-room': 'Music Room',
+          'safe-room': 'Safe Room/Panic Room',
+        };
+        return labels[spaceCode] || spaceCode;
+      };
+
+      let currentY = 0;
+      let pageNumber = 1;
+
+      const addHeader = () => {
+        doc.rect(0, 0, pageWidth, 35).fill(N4S_NAVY);
+        doc.fontSize(12).fillColor('#ffffff').font('Helvetica-Bold').text('N4S', margin, 12);
+        doc.fontSize(8).fillColor('#ffffff').font('Helvetica').text('Luxury Residential Advisory', margin, 24);
+        doc.fontSize(9).fillColor('#ffffff').text('KYC Profile Report', pageWidth - margin - 120, 12, { width: 120, align: 'right' });
+        doc.fontSize(8).text(generatedDate, pageWidth - margin - 120, 24, { width: 120, align: 'right' });
+      };
+
+      const addFooter = (pageNum: number, totalPages: number) => {
+        doc.fontSize(7).fillColor(N4S_MUTED);
+        doc.text('© 2026 Not4Sale LLC • Confidential', margin, pageHeight - 25);
+        doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin - 60, pageHeight - 25, { width: 60, align: 'right' });
+      };
+
+      const addSectionTitle = (title: string) => {
+        doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text(title, margin, currentY);
+        currentY += 5;
+        doc.moveTo(margin, currentY).lineTo(margin + 50, currentY).strokeColor(N4S_GOLD).lineWidth(2).stroke();
+        currentY += 12;
+      };
+
+      const addSubsectionTitle = (title: string) => {
+        doc.fontSize(11).fillColor(N4S_KYC_BLUE).font('Helvetica-Bold').text(title, margin, currentY);
+        currentY += 10;
+      };
+
+      const addLabelValue = (label: string, value: any, indent = 0) => {
+        doc.fontSize(9).fillColor(N4S_MUTED).font('Helvetica-Bold').text(label + ':', margin + indent, currentY);
+        const displayValue = value !== undefined && value !== null && value !== '' ? String(value) : 'Not specified';
+        doc.fontSize(10).fillColor(N4S_TEXT).font('Helvetica').text(displayValue, margin + indent + 100, currentY);
+        currentY += 14;
+      };
+
+      const addBulletList = (items: string[], indent = 10) => {
+        if (!items || items.length === 0) {
+          doc.fontSize(9).fillColor(N4S_MUTED).font('Helvetica-Oblique').text('None specified', margin + indent, currentY);
+          currentY += 12;
+          return;
+        }
+        items.forEach(item => {
+          doc.fontSize(9).fillColor(N4S_TEXT).font('Helvetica').text('• ' + getSpaceLabel(item), margin + indent, currentY);
+          currentY += 12;
+        });
+      };
+
+      // ========== PAGE 1: CLIENT PROFILE ==========
+
+      addHeader();
+      currentY = 55;
+
+      // Title
+      doc.fontSize(22).fillColor(N4S_NAVY).font('Helvetica-Bold').text('Client Profile', margin, currentY);
+      currentY += 35;
+
+      // Client info box
+      doc.rect(margin, currentY, contentWidth, 55).fill(N4S_ACCENT_LIGHT);
+      currentY += 12;
+      doc.fontSize(8).fillColor(N4S_MUTED).font('Helvetica-Bold').text('CLIENT', margin + 10, currentY);
+      currentY += 10;
+      doc.fontSize(16).fillColor(N4S_NAVY).font('Helvetica-Bold').text(clientName, margin + 10, currentY);
+      currentY += 18;
+      doc.fontSize(11).fillColor(N4S_TEXT).font('Helvetica').text(projectName, margin + 10, currentY);
       if (secondaryName) {
-        doc.moveDown(0.3);
-        doc.font('Helvetica-Bold').text('Secondary: ', { continued: true });
-        doc.font('Helvetica').text(secondaryName);
+        currentY += 14;
+        doc.fontSize(9).fillColor(N4S_MUTED).text('Partner: ' + secondaryName, margin + 10, currentY);
       }
+      currentY += 30;
 
-      doc.moveDown(3);
+      // Project Overview
+      addSubsectionTitle('Project Overview');
+      addLabelValue("Property's Role", getPropertyRoleLabel(thisPropertyRole));
+      addLabelValue('Investment Horizon', getInvestmentHorizonLabel(investmentHorizon));
+      if (targetGSF) addLabelValue('Target Size', targetGSF.toLocaleString() + ' SF');
 
-      // Main Title
-      doc.fontSize(24).fillColor(N4S_NAVY).font('Helvetica-Bold').text('Know Your Client', { align: 'center' });
-      doc.moveDown(0.5);
-      doc.fontSize(14).text('Profile Report', { align: 'center' });
-      doc.moveDown(0.5);
-      doc.fontSize(12).fillColor(N4S_MUTED).font('Helvetica').text('Comprehensive client profile for luxury residence planning', { align: 'center' });
+      currentY += 8;
 
-      doc.moveDown(3);
+      // Household Composition
+      addSubsectionTitle('Household Composition');
+      addLabelValue('Adults', adultsCount);
+      addLabelValue('Children', childrenCount);
+      addLabelValue('Staffing Level', getStaffingLevelLabel(staffingLevel));
 
-      // ========== Portfolio Context ==========
-      doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text('Portfolio Context');
-      doc.moveDown(0.5);
-      doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
-      doc.moveDown(0.8);
-
-      const contextItems = [
-        { label: 'Property Type', value: portfolioContext.propertyType },
-        { label: 'Project Timeline', value: portfolioContext.projectTimeline },
-        { label: 'Budget Range', value: portfolioContext.budgetRange },
-        { label: 'Location Preference', value: portfolioContext.locationPreference },
-      ];
-
-      doc.fontSize(11).fillColor(N4S_TEXT).font('Helvetica');
-      for (const item of contextItems) {
-        if (item.value) {
-          doc.font('Helvetica-Bold').text(`${item.label}: `, { continued: true });
-          doc.font('Helvetica').text(item.value);
-          doc.moveDown(0.3);
-        }
-      }
-
-      doc.moveDown(1.5);
-
-      // ========== Design Identity ==========
-      if (Object.keys(designIdentity).length > 0) {
-        if (doc.y > pageHeight - 200) doc.addPage();
-
-        doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text('Design Identity');
-        doc.moveDown(0.5);
-        doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
-        doc.moveDown(0.8);
-
-        doc.fontSize(11).fillColor(N4S_TEXT).font('Helvetica');
-
-        if (designIdentity.architecturalStyle) {
-          doc.font('Helvetica-Bold').text('Architectural Style: ', { continued: true });
-          doc.font('Helvetica').text(designIdentity.architecturalStyle);
-          doc.moveDown(0.3);
-        }
-
-        if (designIdentity.materialPreferences?.length) {
-          doc.font('Helvetica-Bold').text('Material Preferences: ', { continued: true });
-          doc.font('Helvetica').text(designIdentity.materialPreferences.join(', '));
-          doc.moveDown(0.3);
-        }
-
-        if (designIdentity.colorPalette?.length) {
-          doc.font('Helvetica-Bold').text('Color Palette: ', { continued: true });
-          doc.font('Helvetica').text(designIdentity.colorPalette.join(', '));
-          doc.moveDown(0.3);
-        }
-
-        doc.moveDown(1.5);
-      }
-
-      // ========== Lifestyle & Living ==========
-      if (Object.keys(lifestyleLiving).length > 0) {
-        if (doc.y > pageHeight - 200) doc.addPage();
-
-        doc.fontSize(14).fillColor(N4S_NAVY).font('Helvetica-Bold').text('Lifestyle & Living');
-        doc.moveDown(0.5);
-        doc.moveTo(margin, doc.y).lineTo(margin + 60, doc.y).strokeColor(N4S_GOLD).lineWidth(2).stroke();
-        doc.moveDown(0.8);
-
-        doc.fontSize(11).fillColor(N4S_TEXT).font('Helvetica');
-
-        if (lifestyleLiving.workFromHome) {
-          const wfhLabels: Record<string, string> = {
-            'never': 'Never',
-            'sometimes': 'Sometimes (1-2 days/week)',
-            'often': 'Often (3-4 days/week)',
-            'always': 'Always (Full Remote)'
-          };
-          doc.font('Helvetica-Bold').text('Work From Home: ', { continued: true });
-          doc.font('Helvetica').text(wfhLabels[lifestyleLiving.workFromHome] || lifestyleLiving.workFromHome);
-          doc.moveDown(0.3);
-        }
-
-        if (lifestyleLiving.entertainingFrequency) {
-          doc.font('Helvetica-Bold').text('Entertaining Frequency: ', { continued: true });
-          doc.font('Helvetica').text(lifestyleLiving.entertainingFrequency);
-          doc.moveDown(0.3);
-        }
-
-        if (lifestyleLiving.wellnessPriorities?.length) {
-          doc.font('Helvetica-Bold').text('Wellness Priorities: ', { continued: true });
-          doc.font('Helvetica').text(lifestyleLiving.wellnessPriorities.join(', '));
-          doc.moveDown(0.3);
-        }
-
-        if (lifestyleLiving.hobbies?.length) {
-          doc.font('Helvetica-Bold').text('Hobbies: ', { continued: true });
-          doc.font('Helvetica').text(lifestyleLiving.hobbies.join(', '));
-          doc.moveDown(0.3);
-        }
-      }
-
-      // ========== Add Page Numbers ==========
-      const range = doc.bufferedPageRange();
-      for (let i = range.start; i < range.start + range.count; i++) {
-        doc.switchToPage(i);
-
-        // Save cursor position to prevent page overflow detection
-        const oldY = doc.y;
-        const oldX = doc.x;
-
-        // Footer - copyright on left
-        doc.fontSize(8).fillColor(N4S_MUTED);
-        doc.text('© 2026 Not4Sale LLC', margin, pageHeight - 30, {
-          lineBreak: false,
-          continued: false
+      // Family Members Details
+      if (familyMembers.length > 0) {
+        currentY += 5;
+        doc.fontSize(9).fillColor(N4S_MUTED).font('Helvetica-Bold').text('Family Members:', margin, currentY);
+        currentY += 12;
+        familyMembers.forEach((member: any) => {
+          const memberName = member.name || 'Unnamed';
+          const memberRole = member.role || 'Member';
+          const memberAge = member.age ? ` (${member.age})` : '';
+          doc.fontSize(9).fillColor(N4S_TEXT).font('Helvetica').text(`• ${memberName} - ${memberRole}${memberAge}`, margin + 10, currentY);
+          currentY += 12;
         });
-
-        // Page number on right
-        doc.text(`Page ${i + 1} of ${range.count}`, pageWidth - margin - 80, pageHeight - 30, {
-          width: 80,
-          align: 'right',
-          lineBreak: false,
-          continued: false
-        });
-
-        // Reset cursor position
-        doc.x = oldX;
-        doc.y = oldY;
       }
+
+      addFooter(1, 5);
+
+      // ========== PAGE 2: BUDGET PARAMETERS ==========
+
+      doc.addPage();
+      addHeader();
+      currentY = 55;
+      pageNumber = 2;
+
+      addSectionTitle('Budget Parameters');
+
+      addLabelValue('Land Acquisition Cost', formatCurrency(landAcquisitionCost));
+      addLabelValue('Total Project Budget', formatCurrency(totalProjectBudget));
+      addLabelValue('Interior Budget', formatCurrency(interiorBudget));
+
+      currentY += 8;
+
+      // Grand Total highlight box
+      doc.rect(margin, currentY, contentWidth, 35).fill(N4S_KYC_BLUE);
+      doc.fontSize(10).fillColor('#ffffff').font('Helvetica-Bold').text('GRAND TOTAL (Land + Project)', margin + 10, currentY + 10);
+      doc.fontSize(16).text(formatCurrency(grandTotal), pageWidth - margin - 10, currentY + 12, { width: contentWidth - 20, align: 'right' });
+      currentY += 50;
+
+      // Quality Standards
+      addSubsectionTitle('Quality Standards');
+      addLabelValue('Interior Quality Tier', getQualityTierLabel(interiorQualityTier));
+
+      addFooter(2, 5);
+
+      // ========== PAGE 3: LIFESTYLE & WORKING ==========
+
+      doc.addPage();
+      addHeader();
+      currentY = 55;
+      pageNumber = 3;
+
+      addSectionTitle('Lifestyle & Working');
+
+      // Work From Home
+      addSubsectionTitle('Work From Home');
+      addLabelValue('WFH Frequency', getWorkFromHomeLabel(workFromHome));
+      addLabelValue('Dedicated Offices', dedicatedOffices > 0 ? dedicatedOffices : 'Not specified');
+
+      currentY += 8;
+
+      // Entertainment
+      addSubsectionTitle('Entertainment');
+      addLabelValue('Entertaining Style', getEntertainingStyleLabel(entertainingStyle));
+      addLabelValue('Frequency', getEntertainingFrequencyLabel(entertainingFrequency));
+
+      currentY += 8;
+
+      // Hobbies & Activities
+      if (hobbies.length > 0) {
+        addSubsectionTitle('Hobbies & Activities');
+        hobbies.forEach((hobby: string) => {
+          doc.fontSize(9).fillColor(N4S_TEXT).font('Helvetica').text('• ' + hobby, margin + 10, currentY);
+          currentY += 12;
+        });
+        currentY += 5;
+      }
+
+      // Wellness Priorities
+      if (wellnessPriorities.length > 0) {
+        addSubsectionTitle('Wellness Priorities');
+        wellnessPriorities.forEach((priority: string) => {
+          doc.fontSize(9).fillColor(N4S_TEXT).font('Helvetica').text('• ' + priority, margin + 10, currentY);
+          currentY += 12;
+        });
+      }
+
+      addFooter(3, 5);
+
+      // ========== PAGE 4: SPACE REQUIREMENTS ==========
+
+      doc.addPage();
+      addHeader();
+      currentY = 55;
+      pageNumber = 4;
+
+      addSectionTitle('Space Requirements');
+
+      addLabelValue('Bedroom Count', bedroomCount !== undefined ? bedroomCount : 'Not specified');
+
+      currentY += 8;
+
+      // Must-Have Spaces
+      addSubsectionTitle('Must-Have Spaces');
+      addBulletList(mustHaveSpaces);
+
+      currentY += 8;
+
+      // Nice-to-Have Spaces
+      addSubsectionTitle('Nice-to-Have Spaces');
+      addBulletList(niceToHaveSpaces);
+
+      addFooter(4, 5);
+
+      // ========== PAGE 5: DESIGN IDENTITY ==========
+
+      doc.addPage();
+      addHeader();
+      currentY = 55;
+      pageNumber = 5;
+
+      addSectionTitle('Design Identity');
+
+      if (!hasPrincipalTaste && !hasSecondaryTaste) {
+        // No taste data
+        doc.rect(margin, currentY, contentWidth, 40).fill(N4S_ACCENT_LIGHT);
+        doc.fontSize(10).fillColor(N4S_MUTED).font('Helvetica-Oblique').text('Taste Exploration not yet completed', margin + 10, currentY + 12);
+        doc.fontSize(8).text('Complete the Design Identity module to generate Design DNA profile', margin + 10, currentY + 26);
+        currentY += 55;
+      } else {
+        // Principal Design Profile
+        if (hasPrincipalTaste && principalTasteResults?.profile?.scores) {
+          const scores = principalTasteResults.profile.scores;
+          addSubsectionTitle(`Principal Design Profile${principalFirstName ? ` (${principalFirstName})` : ''}`);
+
+          const dimensions = [
+            { key: 'tradition', label: 'Tradition', left: 'Contemporary', right: 'Traditional' },
+            { key: 'formality', label: 'Formality', left: 'Casual', right: 'Formal' },
+            { key: 'warmth', label: 'Warmth', left: 'Cool', right: 'Warm' },
+            { key: 'drama', label: 'Drama', left: 'Subtle', right: 'Bold' },
+            { key: 'openness', label: 'Openness', left: 'Enclosed', right: 'Open' },
+            { key: 'art_focus', label: 'Art Focus', left: 'Understated', right: 'Gallery-like' },
+          ];
+
+          dimensions.forEach(dim => {
+            const value = scores[dim.key];
+            if (value !== undefined) {
+              doc.fontSize(9).fillColor(N4S_TEXT).font('Helvetica-Bold').text(dim.label, margin, currentY);
+              currentY += 10;
+
+              // Score bar
+              const barWidth = contentWidth - 80;
+              const barX = margin + 40;
+              doc.rect(barX, currentY, barWidth, 8).fill(N4S_BORDER);
+              const markerPos = barX + (value / 10) * barWidth;
+              doc.circle(markerPos, currentY + 4, 6).fill(N4S_KYC_BLUE);
+              doc.fontSize(6).fillColor('#ffffff').text(value.toFixed(1), markerPos - 5, currentY + 2);
+
+              doc.fontSize(7).fillColor(N4S_MUTED).text(dim.left, barX, currentY + 12);
+              doc.text(dim.right, barX + barWidth - 40, currentY + 12, { width: 40, align: 'right' });
+              currentY += 24;
+            }
+          });
+        }
+
+        // Secondary Design Profile
+        if (hasSecondaryTaste && secondaryTasteResults?.profile?.scores) {
+          currentY += 10;
+          const scores = secondaryTasteResults.profile.scores;
+          addSubsectionTitle(`Partner Design Profile${secondaryFirstName ? ` (${secondaryFirstName})` : ''}`);
+
+          const dimensions = [
+            { key: 'tradition', label: 'Tradition', left: 'Contemporary', right: 'Traditional' },
+            { key: 'formality', label: 'Formality', left: 'Casual', right: 'Formal' },
+            { key: 'warmth', label: 'Warmth', left: 'Cool', right: 'Warm' },
+            { key: 'drama', label: 'Drama', left: 'Subtle', right: 'Bold' },
+            { key: 'openness', label: 'Openness', left: 'Enclosed', right: 'Open' },
+            { key: 'art_focus', label: 'Art Focus', left: 'Understated', right: 'Gallery-like' },
+          ];
+
+          dimensions.forEach(dim => {
+            const value = scores[dim.key];
+            if (value !== undefined) {
+              doc.fontSize(9).fillColor(N4S_TEXT).font('Helvetica-Bold').text(dim.label, margin, currentY);
+              currentY += 10;
+
+              const barWidth = contentWidth - 80;
+              const barX = margin + 40;
+              doc.rect(barX, currentY, barWidth, 8).fill(N4S_BORDER);
+              const markerPos = barX + (value / 10) * barWidth;
+              doc.circle(markerPos, currentY + 4, 6).fill(N4S_KYC_BLUE);
+              doc.fontSize(6).fillColor('#ffffff').text(value.toFixed(1), markerPos - 5, currentY + 2);
+
+              doc.fontSize(7).fillColor(N4S_MUTED).text(dim.left, barX, currentY + 12);
+              doc.text(dim.right, barX + barWidth - 40, currentY + 12, { width: 40, align: 'right' });
+              currentY += 24;
+            }
+          });
+        }
+
+        // Partner Alignment Score
+        if (hasPrincipalTaste && hasSecondaryTaste) {
+          const pScores = principalTasteResults?.profile?.scores || {};
+          const sScores = secondaryTasteResults?.profile?.scores || {};
+          const dims = ['tradition', 'formality', 'warmth', 'drama', 'openness', 'art_focus'];
+          let totalDiff = 0;
+          dims.forEach(dim => {
+            const p = pScores[dim] || 5;
+            const s = sScores[dim] || 5;
+            totalDiff += Math.abs(p - s);
+          });
+          const avgDiff = totalDiff / dims.length;
+          const alignmentScore = Math.max(0, Math.round(100 - (avgDiff / 9 * 100)));
+
+          currentY += 15;
+          doc.rect(margin, currentY, contentWidth, 35).fill(N4S_ACCENT_LIGHT);
+          doc.fontSize(10).fillColor(N4S_NAVY).font('Helvetica-Bold').text('PARTNER ALIGNMENT', margin + 10, currentY + 10);
+          doc.fontSize(18).fillColor('#4caf50').text(`${alignmentScore}%`, pageWidth - margin - 10, currentY + 12, { width: contentWidth - 20, align: 'right' });
+        }
+      }
+
+      addFooter(5, 5);
 
       doc.end();
     });
